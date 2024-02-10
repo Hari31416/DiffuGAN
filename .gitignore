@@ -4,3 +4,4 @@ __pycache__
 *temp*.ipynb
 # downloaded data files.
 data
+.env
