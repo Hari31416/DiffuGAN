@@ -1,9 +1,15 @@
 """Some utility functions/classes to be used throughout the project."""
 
+import DiffuGAN.env as env
+
 import logging
+from typing import Union
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torchvision import datasets, transforms
+import matplotlib.pyplot as plt
+import numpy as np
+from PIL import Image
 
 
 def create_simple_logger(logger_name: str, level: str = "info") -> logging.Logger:
@@ -47,10 +53,40 @@ def create_simple_logger(logger_name: str, level: str = "info") -> logging.Logge
     return logger
 
 
+logger = create_simple_logger("utils", env.LOG_LEVEL)
+
+
+def is_jupyter_notebook() -> bool:
+    """Checks if the code is being run in a Jupyter notebook.
+
+    Returns
+    -------
+    bool
+        True if the code is being run in a Jupyter notebook, False otherwise.
+    """
+    is_jupyter = False
+    try:
+        # noinspection PyUnresolvedReferences
+        from IPython import get_ipython
+
+        # noinspection PyUnresolvedReferences
+        if get_ipython() is None or "IPKernelApp" not in get_ipython().config:
+            pass
+        else:
+            is_jupyter = True
+    except (ImportError, NameError):
+        pass
+    if is_jupyter:
+        logger.debug("Running in Jupyter notebook.")
+    else:
+        logger.debug("Not running in a Jupyter notebook.")
+    return is_jupyter
+
+
 class ImageDataset(Dataset):
     """A class that fetches some built-in datasets and provides a simple interface to access them. The class also provides methods to transform the data and to create a DataLoader."""
 
-    def __init__(self, logger: logging.Logger | None = None) -> None:
+    def __init__(self, logger: Union[logging.Logger, None] = None) -> None:
         """Initializes the ImageDataset object.
 
         Parameters
@@ -64,7 +100,7 @@ class ImageDataset(Dataset):
         self,
         dataset_name: str,
         root: str,
-        transform: torch.nn.Module | None = None,
+        transform: Union[torch.nn.Module, None] = None,
         train: bool = True,
         **kwargs: dict[str, any],
     ) -> torch.utils.data.Dataset:
@@ -132,7 +168,7 @@ class ImageDataset(Dataset):
         dataset_name: str,
         batch_size: int,
         root: str = "data",
-        transform: torch.nn.Module | None = None,
+        transform: Union[torch.nn.Module, None] = None,
         train: bool = True,
         shuffle: bool = True,
         num_workers: int = 1,
@@ -204,3 +240,45 @@ class ImageDataset(Dataset):
             shuffle=shuffle,
             num_workers=num_workers,
         )
+
+
+def show_image(
+    image: Union[torch.Tensor, np.ndarray, Image.Image],
+    title: str = "",
+    ax: Union[plt.Axes, None] = None,
+) -> plt.Axes:
+    """Displays the given image.
+
+    Parameters
+    ----------
+    image : torch.Tensor
+        The image to be displayed.
+    title : str, optional
+        The title of the image. Default is "".
+    ax : plt.Axes | None, optional
+        The axes on which to display the image. If None, a new figure is created. Default is None.
+
+    Returns
+    -------
+    plt.Axes
+        The axes on which the image is displayed.
+    """
+    # TODO: Update the method to handle more complex cases
+    if ax is None:
+        logger.debug("Creating a new figure as no axes were provided.")
+        _, ax = plt.subplots()
+
+    if isinstance(image, torch.Tensor):
+        logger.debug("Converting tensor to numpy and permuting the dimensions.")
+        # convert to numpy and permute the dimensions
+        image = image.permute(1, 2, 0).numpy()
+    # If the image is a PIL image, convert it to numpy
+    if isinstance(image, Image.Image):
+        logger.debug("Converting PIL image to numpy.")
+        image = np.array(image)
+
+    ax.imshow(image)
+    ax.set_title(title)
+    ax.axis("off")
+    plt.show()
+    return ax
