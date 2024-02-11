@@ -1,0 +1,79 @@
+---
+dataset_config:
+  name: mnist
+  batch_size: 32
+  root: data
+  train: True
+  shuffle: True
+  num_workers: 1
+
+wandb_config:
+  name: run_1
+  project: diffugan
+  tags:
+    - GAN
+    - deep_learning
+  notes: This is a sample experiment
+  group: gan
+
+generator_config:
+  latent_dim: 100
+  img_shape:
+    - 1
+    - 28
+    - 28
+  layer_sizes:
+    - 256
+    - 512
+    - 1024
+  activation:
+    name: LeakyReLU
+    params:
+      negative_slope: 0.2
+  final_activation:
+    name: sigmoid
+
+discriminator_config:
+  img_shape:
+    - 1
+    - 28
+    - 28
+  layer_sizes:
+    - 256
+    - 512
+    - 1024
+  activation:
+    name: relu
+    params: {}
+  final_activation:
+    name: sigmoid
+  dropout_rates:
+    - 0.3
+    - 0.3
+
+gan_config:
+  generator:
+    name: fnn_generator
+    optimizer:
+      name: Adam
+      params:
+        lr: 0.0002
+        betas:
+          - 0.5
+          - 0.999
+  discriminator:
+    name: fnn_discriminator
+    optimizer:
+      name: Adam
+      params:
+        lr: 0.0002
+        betas:
+          - 0.5
+          - 0.999
+  loss:
+    name: BCELoss
+    params: {}
+  k: 1
+  epochs: 20
+  max_iteration_per_epoch: None
+  log_interval: 100
