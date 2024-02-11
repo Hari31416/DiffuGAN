@@ -1,6 +1,6 @@
 """Some utility functions/classes to be used throughout the project."""
 
-import DiffuGAN.env as env
+from .env import env
 
 import logging
 from typing import Union
@@ -10,9 +10,12 @@ from torchvision import datasets, transforms
 import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
+import wandb
 
 
-def create_simple_logger(logger_name: str, level: str = "info") -> logging.Logger:
+def create_simple_logger(
+    logger_name: str, level: str = env.LOG_LEVEL
+) -> logging.Logger:
     """Creates a simple logger with the given name and level. The logger has a single handler that logs to the console.
 
     Parameters
@@ -242,10 +245,79 @@ class ImageDataset(Dataset):
         )
 
 
+def create_grid_from_batched_image(
+    images: Union[torch.Tensor, np.ndarray],
+    nrow: Union[int, None] = None,
+    padding: int = 2,
+    pad_value: int = 0,
+    normalize: bool = True,
+    return_type: str = "numpy",
+):
+    """Creates a grid of images from the given batch of images.
+
+    Parameters
+    ----------
+    images : torch.Tensor | np.ndarray
+        The batch of images to be displayed. Must be in the shape (N, H, W, C).
+    nrow : int | None, optional
+        Number of images in each row. If None, it is set to the square root of the number of images. Default is None.
+    padding : int, optional
+        The padding between the images. Default is 2.
+    pad_value : int, optional
+        The value to be used for padding. Default is 0.
+    normalize : bool, optional
+        Whether to normalize the images. Default is True.
+    return_type : str, optional
+        The type of the returned grid. Must be one of "numpy" "tensor" or "PIL". Default is "numpy".
+
+    Returns
+    -------
+    np.ndarray
+        The grid of images.
+    """
+    # if the input is a tensor, convert it to numpy
+    if torch.is_tensor(images):
+        images = images.numpy()
+
+    num_images, height, width, channels = images.shape
+    if nrow is None:
+        nrow = int(np.ceil(np.sqrt(num_images)))
+    ncols = int(np.ceil(images.shape[0] / nrow))
+
+    grid = np.ones((nrow * (width + padding), ncols * (width + padding), channels))
+    grid *= pad_value
+
+    # fill the array with the images
+    for i in range(nrow):
+        for j in range(ncols):
+            index = i * ncols + j
+            if index < num_images:
+                grid[
+                    i * (height + padding) : i * (height + padding) + height,
+                    j * (width + padding) : j * (width + padding) + width,
+                    :,
+                ] = images[index]
+
+    if normalize:
+        grid -= grid.min()
+        grid /= grid.max()
+
+    if return_type == "tensor":
+        grid = torch.from_numpy(grid)
+    elif return_type == "PIL":
+        # make sure the grid is in the range [0, 255]
+        max_val = grid.max()
+        if max_val <= 1:
+            grid = (grid * 255).astype(np.uint8)
+        grid = Image.fromarray(grid)
+    return grid
+
+
 def show_image(
     image: Union[torch.Tensor, np.ndarray, Image.Image],
     title: str = "",
     ax: Union[plt.Axes, None] = None,
+    cmap: str = "viridis",
 ) -> plt.Axes:
     """Displays the given image.
 
@@ -276,9 +348,134 @@ def show_image(
     if isinstance(image, Image.Image):
         logger.debug("Converting PIL image to numpy.")
         image = np.array(image)
-
-    ax.imshow(image)
+    channels = image.shape[-1]
+    if channels == 1:
+        cmap = "gray"
+    ax.imshow(image, cmap=cmap)
     ax.set_title(title)
     ax.axis("off")
     plt.show()
     return ax
+
+
+def parse_activation(name, **kwargs):
+    """Parses the activation function name and returns the corresponding function.
+
+    Parameters
+    ----------
+    name : str
+        Name of the activation function.
+    kwargs
+        Additional keyword arguments to be passed to the activation function.
+        **Note**: Use `inplace=True` if using the activations in a `torch.nn.Sequential` block.
+
+    Returns
+    -------
+    torch.nn.Module
+        The activation function.
+    """
+    name = name.lower()
+    str_to_activation_map = {
+        "relu": torch.nn.ReLU,
+        "leaky_relu": torch.nn.LeakyReLU,
+        "tanh": torch.nn.Tanh,
+        "sigmoid": torch.nn.Sigmoid,
+        "softmin": torch.nn.Softmin,
+    }
+    if name not in str_to_activation_map:
+        msg = f"Activation function {name} is not supported. Must be one of {list(str_to_activation_map.keys())}."
+        logger.error(msg)
+        raise NotImplementedError(msg)
+    return str_to_activation_map[name](**kwargs)
+
+
+def create_wandb_logger(
+    name: Union[str, None] = None,
+    project: Union[str, None] = None,
+    config: Union[dict[str, any], None] = None,
+    tags: Union[list[str], None] = None,
+    notes: str = "",
+    group: Union[str, None] = None,
+    job_type: str = "",
+    logger: Union[logging.Logger, None] = None,
+) -> wandb.sdk.wandb_run.Run:
+    """Creates a new run on Weights & Biases and returns the run object.
+
+    Parameters
+    ----------
+    project : str | None, optional
+        The name of the project. If None, it must be provided in the config. Default is None.
+    name : str | None, optional
+        The name of the run. If None, it must be provided in the config. Default is None.
+    config : dict[str, any] | None, optional
+        The configuration to be logged. Default is None. If `project` and `name` are not provided, they must be present in the config.
+    tags : list[str] | None, optional
+        The tags to be added to the run. Default is None.
+    notes : str, optional
+        The notes to be added to the run. Default is "".
+    group : str | None, optional
+        The name of the group to which the run belongs. Default is None.
+    job_type : str, optional
+        The type of job. Default is "train".
+    logger : logging.Logger | None, optional
+        The logger to be used by the object. If None, a simple logger is created using `create_simple_logger`. Default is None.
+
+    Returns
+    -------
+    wandb.Run
+        The run object.
+    """
+    logger = logger or create_simple_logger("create_wandb_logger")
+    if config is None:
+        logger.debug("No config provided. Using an empty config.")
+        config = {}
+
+    if name is None and "name" not in config.keys():
+        m = "Run name must be provided either as an argument or in the config."
+        logger.error(m)
+        raise ValueError(m)
+
+    if project is None and "project" not in config.keys():
+        m = "Project name must be provided either as an argument or in the config."
+        logger.error(m)
+        raise ValueError(m)
+
+    # If the arguments are provided, they take precedence over the config
+    name = name or config.get("name")
+    project = project or config.get("project")
+    notes = notes or config.get("notes")
+    tags = tags or config.get("tags")
+    group = group or config.get("group")
+    job_type = job_type or config.get("job_type")
+
+    logger.info(
+        f"Initializing Weights & Biases for project {project} with run name {name}."
+    )
+    wandb.init(
+        project=project,
+        name=name,
+        config=config,
+        tags=tags,
+        notes=notes,
+        group=group,
+        job_type=job_type,
+    )
+    return wandb
+
+
+def yaml_text_to_dict(yaml_text: str) -> dict[str, any]:
+    """Converts the given YAML text to a dictionary.
+
+    Parameters
+    ----------
+    yaml_text : str
+        The YAML text.
+
+    Returns
+    -------
+    dict[str, any]
+        The dictionary representation of the YAML text.
+    """
+    import yaml
+
+    return yaml.safe_load(yaml_text)
