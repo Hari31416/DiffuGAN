@@ -3,10 +3,13 @@
 from .env import env
 
 import logging
-from typing import Union
+import argparse
+from typing import Union, Any
 import torch
 from torch.utils.data import Dataset, DataLoader
+import torch.optim as optim
 from torchvision import datasets, transforms
+
 import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
@@ -252,7 +255,8 @@ def create_grid_from_batched_image(
     pad_value: int = 0,
     normalize: bool = True,
     return_type: str = "numpy",
-):
+    quick_plot: bool = False,
+) -> Union[torch.Tensor, np.ndarray, Image.Image]:
     """Creates a grid of images from the given batch of images.
 
     Parameters
@@ -269,6 +273,8 @@ def create_grid_from_batched_image(
         Whether to normalize the images. Default is True.
     return_type : str, optional
         The type of the returned grid. Must be one of "numpy" "tensor" or "PIL". Default is "numpy".
+    quick_plot : bool, optional
+        Plots the image using matplotlib if True. Default is False.
 
     Returns
     -------
@@ -310,6 +316,8 @@ def create_grid_from_batched_image(
         if max_val <= 1:
             grid = (grid * 255).astype(np.uint8)
         grid = Image.fromarray(grid)
+    if quick_plot:
+        show_image(grid, title="Grid of images")
     return grid
 
 
@@ -349,7 +357,8 @@ def show_image(
         logger.debug("Converting PIL image to numpy.")
         image = np.array(image)
     channels = image.shape[-1]
-    if channels == 1:
+
+    if channels == 1 and cmap not in ["gray", "Greys"]:
         cmap = "gray"
     ax.imshow(image, cmap=cmap)
     ax.set_title(title)
@@ -358,7 +367,7 @@ def show_image(
     return ax
 
 
-def parse_activation(name, **kwargs):
+def parse_activation(name: str, **kwargs: dict[str, Any]) -> torch.nn.Module:
     """Parses the activation function name and returns the corresponding function.
 
     Parameters
@@ -387,6 +396,38 @@ def parse_activation(name, **kwargs):
         logger.error(msg)
         raise NotImplementedError(msg)
     return str_to_activation_map[name](**kwargs)
+
+
+def parse_optimizer(
+    name: str, parameters: torch.nn.Module, **kwargs: dict[str, Any]
+) -> torch.optim.Optimizer:
+    """Parses the optimizer name and returns the corresponding optimizer.
+
+    Parameters
+    ----------
+    name : str
+        Name of the optimizer.
+    parameters: torch.nn.Module
+        The parameters to be optimized.
+    kwargs
+        Additional keyword arguments to be passed to the optimizer.
+
+    Returns
+    -------
+    torch.optim.Optimizer
+        The optimizer.
+    """
+    name = name.lower()
+    str_to_optimizer_map = {
+        "adam": optim.Adam,
+        "sgd": optim.SGD,
+        "rmsprop": optim.RMSprop,
+    }
+    if name not in str_to_optimizer_map:
+        msg = f"Optimizer {name} is not supported. Must be one of {list(str_to_optimizer_map.keys())}."
+        logger.error(msg)
+        raise NotImplementedError(msg)
+    return str_to_optimizer_map[name](parameters, **kwargs)
 
 
 def create_wandb_logger(
