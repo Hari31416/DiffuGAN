@@ -520,3 +520,99 @@ def yaml_text_to_dict(yaml_text: str) -> dict[str, any]:
     import yaml
 
     return yaml.safe_load(yaml_text)
+
+
+def add_dataset_args(
+    args: argparse.ArgumentParser, default_arguments: dict[str, any] = {}
+):
+    """Adds arguments related to the dataset to the given parser."""
+    # dataset parameters
+    args.add_argument(
+        "--dataset-name",
+        "-d",
+        type=str,
+        default=default_arguments.get("dataset", "mnist"),
+        choices=["mnist", "fashion_mnist", "cifar10"],
+        help="The dataset to use.",
+    )
+    args.add_argument(
+        "--batch_size",
+        "-b",
+        type=int,
+        default=default_arguments.get("batch_size", 32),
+        help="The batch size.",
+    )
+    args.add_argument(
+        "--dataset-root",
+        "-r",
+        type=str,
+        default=default_arguments.get("root", "data"),
+        help="The root directory for the dataset.",
+    )
+    args.add_argument(
+        "--num_workers",
+        "-w",
+        type=int,
+        default=default_arguments.get("num_workers", 1),
+        help="The number of workers.",
+    )
+    args.add_argument(
+        "--dataset-shuffle",
+        action=argparse.BooleanOptionalAction,
+        default=default_arguments.get("shuffle", True),
+        help="Shuffle the dataset.",
+    )
+    args.add_argument(
+        "--split-train",
+        action=argparse.BooleanOptionalAction,
+        default=default_arguments.get("split_train", True),
+        help="Whether to use the training set.",
+    )
+    logger.debug("Added dataset arguments to the parser.")
+    return args
+
+
+def add_wandb_args(
+    args: argparse.ArgumentParser, default_arguments: dict[str, any] = {}
+):
+    """Adds arguments related to Weights & Biases to the given parser."""
+    args.add_argument(
+        "--wandb",
+        action=argparse.BooleanOptionalAction,
+        default=default_arguments.get("wandb", False),
+        help="Whether to use Weights & Biases.",
+    )
+    args.add_argument(
+        "--wandb-project",
+        type=str,
+        default=default_arguments.get("project", "diffugan"),
+        help="The name of the Weights & Biases project.",
+    )
+    args.add_argument(
+        "--wandb-name",
+        type=str,
+        default=default_arguments.get("name", "diffugan-run"),
+        help="The name of the Weights & Biases run.",
+    )
+    args.add_argument(
+        "--wandb-notes",
+        type=str,
+        default=default_arguments.get("notes", ""),
+        help="The notes to be added to the Weights & Biases run.",
+    )
+    args.add_argument(
+        "--wandb-tags",
+        type=str,
+        nargs="+",
+        default=default_arguments.get("tags", []),
+        help="The tags to be added to the Weights & Biases run.",
+    )
+    args.add_argument(
+        "--wandb-group",
+        type=str,
+        default=default_arguments.get("group", ""),
+        help="The name of the group to which the Weights & Biases run belongs.",
+    )
+    logger.debug("Added Weights & Biases arguments to the parser.")
+    logger.debug(args)
+    return args

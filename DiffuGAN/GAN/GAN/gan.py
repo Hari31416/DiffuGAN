@@ -1,6 +1,7 @@
 from DiffuGAN.utils import (
     create_simple_logger,
     parse_activation,
+    parse_optimizer,
     show_image,
     create_grid_from_batched_image,
 )
@@ -17,8 +18,8 @@ class FNNGenerator(nn.Module):
 
     def __init__(
         self,
-        latent_dim: int,
-        img_shape: tuple[int],
+        latent_dimension: int,
+        image_shape: tuple[int],
         layer_sizes: list[int] = [128, 256, 512],
         activation: str = "relu",
         activation_kwargs: dict = {},
@@ -28,9 +29,9 @@ class FNNGenerator(nn.Module):
 
         Parameters
         ----------
-        latent_dim : int
+        latent_dimension : int
             The dimension of the latent space
-        img_shape : tuple[int]
+        image_shape : tuple[int]
             The shape of the image that the generator will generate
         layer_sizes : list[int], optional
             The sizes of the layers in the generator, by default [128, 256, 512]
@@ -43,8 +44,8 @@ class FNNGenerator(nn.Module):
         """
         super(FNNGenerator, self).__init__()
 
-        self.img_shape = img_shape
-        self.latent_dim = latent_dim
+        self.image_shape = image_shape
+        self.latent_dimension = latent_dimension
         self.layer_sizes = layer_sizes
         self.activation = parse_activation(activation, **activation_kwargs)
         self.final_activation = parse_activation(final_activation)
@@ -57,7 +58,7 @@ class FNNGenerator(nn.Module):
         """
         layers = []
         layer_sizes = (
-            [self.latent_dim] + self.layer_sizes + [int(np.prod(self.img_shape))]
+            [self.latent_dimension] + self.layer_sizes + [int(np.prod(self.image_shape))]
         )
 
         for i in range(len(layer_sizes) - 1):
@@ -89,15 +90,15 @@ class FNNGenerator(nn.Module):
         Parameters
         ----------
         z : torch.Tensor
-            The input tensor to the generator. Must be of shape `(batch_size, latent_dim)`
+            The input tensor to the generator. Must be of shape `(batch_size, latent_dimension)`
 
         Returns
         -------
         torch.Tensor
-            The output tensor of the generator. Must be of shape `(batch_size, *img_shape)`
+            The output tensor of the generator. Must be of shape `(batch_size, *image_shape)`
         """
         img = self.model(z)
-        img = img.view(img.size(0), *self.img_shape)
+        img = img.view(img.size(0), *self.image_shape)
         return img
 
     def generate(self, z, show=False, return_tensor=False):
@@ -120,18 +121,17 @@ class FNNDiscriminator(nn.Module):
 
     def __init__(
         self,
-        img_shape: tuple[int],
+        image_shape: tuple[int],
         layer_sizes: list[int] = [512, 256, 128],
         activation: str = "relu",
         activation_kwargs: dict = {},
-        final_activation: str = "sigmoid",
         dropout_rates: Union[list[float], float] = 0.3,
     ):
         """Initializes the FNNDiscriminator
 
         Parameters
         ----------
-        img_shape : tuple[int]
+        image_shape : tuple[int]
             The shape of the image that the discriminator will take as input
         layer_sizes : list[int], optional
             The sizes of the layers in the discriminator, by default [512, 256, 128]
@@ -139,8 +139,6 @@ class FNNDiscriminator(nn.Module):
             The activation function to use, by default "relu"
         activation_kwargs : dict, optional
             The keyword arguments to pass to the activation function, by default {}
-        final_activation : str, optional
-            The final activation function to use, by default "sigmoid"
         dropout_rates : Union[list[float], float], optional
             The dropout rates to use in the discriminator, by default 0.3. If a float is passed, the same dropout rate is used for all layers except the first and last layers.
 
@@ -148,15 +146,24 @@ class FNNDiscriminator(nn.Module):
         """
         super(FNNDiscriminator, self).__init__()
 
-        self.img_shape = img_shape
+        self.image_shape = image_shape
         self.layer_sizes = layer_sizes
         self.activation = parse_activation(activation, **activation_kwargs)
-        self.final_activation = parse_activation(final_activation)
+        self.final_activation = nn.Sigmoid()
         self.logger = create_simple_logger("FNNDiscriminator")
         if isinstance(dropout_rates, float):
             self.dropout_rates = [dropout_rates] * (len(layer_sizes) - 1)
+        elif len(dropout_rates) == 1:
+            self.dropout_rates = dropout_rates * (len(layer_sizes) - 1)
+        # take the first len(layer_sizes) - 1 elements
+        elif len(dropout_rates) != len(layer_sizes) - 1:
+            self.logger.warning(
+                "The length of dropout_rates should be `len(layer_sizes) - 1`. Using the first `len(layer_sizes) - 1` elements."
+            )
+            self.dropout_rates = dropout_rates[: len(layer_sizes) - 1]
         else:
             self.dropout_rates = dropout_rates
+
         self.model = self.build_module()
 
     def build_module(self):
@@ -164,7 +171,7 @@ class FNNDiscriminator(nn.Module):
         The discriminator is a simple feedforward neural network with number of units as specified in `layer_sizes`. We have used only linear layers and dropout layers in between. The final layer is a sigmoid layer to ensure that the output is between 0 and 1.
         """
         layers = []
-        layer_sizes = [int(np.prod(self.img_shape))] + self.layer_sizes + [1]
+        layer_sizes = [int(np.prod(self.image_shape))] + self.layer_sizes + [1]
 
         for i in range(len(layer_sizes) - 1):
             in_features = layer_sizes[i]
@@ -195,7 +202,7 @@ class FNNDiscriminator(nn.Module):
         Parameters
         ----------
         img : torch.Tensor
-            The input tensor to the discriminator. Must be of shape `(batch_size, *img_shape)`
+            The input tensor to the discriminator. Must be of shape `(batch_size, *image_shape)`
 
         Returns
         -------
@@ -214,6 +221,10 @@ class GAN:
         generator: nn.Module,
         discriminator: nn.Module,
         k: int = 1,
+        generator_optimizer: str = "adam",
+        discriminator_optimizer: str = "adam",
+        generator_optimizer_kwargs: dict = {"lr": 0.002},
+        discriminator_optimizer_kwargs: dict = {"lr": 0.002},
         wandb_run: Union[wandb.sdk.wandb_run.Run, None] = None,
     ):
         """Initializes the GAN model
@@ -226,6 +237,14 @@ class GAN:
             The discriminator model
         k : int, optional
             The number of iterations to train the discriminator for every iteration of the generator, by default 1
+        generator_optimizer : str, optional
+            The optimizer to use for the generator, by default "adam"
+        discriminator_optimizer : str, optional
+            The optimizer to use for the discriminator, by default "adam"
+        generator_optimizer_kwargs : dict, optional
+            The keyword arguments to pass to the generator optimizer, by default `{"lr": 0.002}`
+        discriminator_optimizer_kwargs : dict, optional
+            The keyword arguments to pass to the discriminator optimizer, by default `{"lr": 0.002}`
         wandb_run : Union[wandb.sdk.wandb_run.Run, None], optional
             The wandb run object to log the training, by default None
         """
@@ -234,11 +253,13 @@ class GAN:
         self.discriminator = discriminator
         self.k = k
         self.bce_loss = nn.BCELoss()
-        self.optimizer_G = optim.Adam(
-            self.generator.parameters(), lr=0.0002, betas=(0.5, 0.999)
+        self.optimizer_G = parse_optimizer(
+            generator_optimizer, generator.parameters(), **generator_optimizer_kwargs
         )
-        self.optimizer_D = optim.Adam(
-            self.discriminator.parameters(), lr=0.0002, betas=(0.5, 0.999)
+        self.optimizer_D = parse_optimizer(
+            discriminator_optimizer,
+            discriminator.parameters(),
+            **discriminator_optimizer_kwargs,
         )
         if wandb_run is not None:
             self.use_wandb = True
@@ -246,11 +267,36 @@ class GAN:
         else:
             self.use_wandb = False
 
+    def generator_og_loss(self, fake: torch.Tensor):
+        """Calculates the loss function using:
+        L = log(1 - D(G(z)))
+        """
+        y_pred = self.discriminator(fake)
+        L = torch.log(1 - y_pred)
+        loss = torch.mean(y_pred)
+        return loss
+
     def generator_loss(self, fake: torch.Tensor):
         """Calculates the generator loss"""
         fake_labels = torch.ones(fake.size(0), 1)
         y_pred = self.discriminator(fake)
         return self.bce_loss(y_pred, fake_labels)
+
+    def _get_generator_loss_function(
+        self,
+        generator_loss_to_use: str,
+        step_count: int,
+        max_step_for_og_loss: int = 1000,
+    ):
+        if generator_loss_to_use == "og":
+            return self.generator_og_loss
+        elif generator_loss_to_use == "bce":
+            return self.generator_loss
+        elif generator_loss_to_use == "og_bce":
+            if step_count < max_step_for_og_loss:
+                return self.generator_og_loss
+            else:
+                return self.generator_loss
 
     def discriminator_loss(self, real: torch.Tensor, fake: torch.Tensor):
         """Calculates the discriminator loss"""
@@ -305,6 +351,8 @@ class GAN:
         epochs: int,
         max_iteration_per_epoch: Union[int, None] = None,
         log_interval: int = 100,
+        generator_loss_to_use: str = "og_bce",
+        max_step_for_og_loss: int = 1000,
     ):
         """Trains the GAN model
 
@@ -318,19 +366,29 @@ class GAN:
             The maximum number of iterations to train for in each epoch, by default None
         log_interval : int, optional
             The interval at which to log the losses and images, by default 100
+        generator_loss_to_use : str, optional
+            The loss function to use for the generator, by default "og_bce"
+
+            - "og": Original GAN loss, which is `L = log(1 - D(G(z)))`
+            - "bce": Binary Cross Entropy loss which is `L = -log(D(G(z)))`
+            - "og_bce": Original GAN loss for the first `max_step_for_og_loss` steps and then BCE loss after that
+
+        max_step_for_og_loss : int, optional
+            The maximum number of steps to use the original GAN loss, by default 1000
 
         Returns
         -------
         None
         """
         losses = {"D": [], "G": []}
-        noises = torch.randn(49, self.generator.latent_dim)
+        noises = torch.randn(49, self.generator.latent_dimension)
+        step_count = 0
         # this is to have the same images for each epoch while logging
         for epoch in range(epochs):
             for i, (imgs, _) in enumerate(dataset):
                 batch_size = imgs.size(0)
                 real_imgs = imgs
-                z = torch.randn(batch_size, self.generator.latent_dim)
+                z = torch.randn(batch_size, self.generator.latent_dimension)
                 fake_imgs = self.generator(z)
                 self.optimizer_D.zero_grad()
                 d_loss = self.discriminator_loss(
@@ -341,7 +399,10 @@ class GAN:
 
                 if i % self.k == 0:
                     self.optimizer_G.zero_grad()
-                    g_loss = self.generator_loss(fake_imgs)
+                    g_loss_func_to_use = self._get_generator_loss_function(
+                        generator_loss_to_use, step_count, max_step_for_og_loss
+                    )
+                    g_loss = g_loss_func_to_use(fake_imgs)
                     g_loss.backward()
                     self.optimizer_G.step()
 
@@ -358,6 +419,7 @@ class GAN:
 
                 if max_iteration_per_epoch is not None and i >= max_iteration_per_epoch:
                     break
+                step_count += 1
 
         self.logger.info("Training complete")
         if self.use_wandb:
