@@ -447,7 +447,10 @@ def parse_activation(name: str, **kwargs: dict[str, Any]) -> torch.nn.Module:
         msg = f"Activation function {name} is not supported. Must be one of {list(str_to_activation_map.keys())}."
         logger.error(msg)
         raise NotImplementedError(msg)
-    return str_to_activation_map[name](**kwargs)
+    # make sure that only those keyword arguments that are supported by the activation function are passed
+    activation = str_to_activation_map[name]
+    supported_kwargs = update_kwargs_for_function(activation, kwargs, raise_error=False)
+    return activation(**supported_kwargs)
 
 
 def parse_optimizer(
@@ -479,7 +482,10 @@ def parse_optimizer(
         msg = f"Optimizer {name} is not supported. Must be one of {list(str_to_optimizer_map.keys())}."
         logger.error(msg)
         raise NotImplementedError(msg)
-    return str_to_optimizer_map[name](parameters, **kwargs)
+    # make sure that only those keyword arguments that are supported by the optimizer are passed
+    optimizer = str_to_optimizer_map[name]
+    supported_kwargs = update_kwargs_for_function(optimizer, kwargs, raise_error=False)
+    return optimizer(parameters, **supported_kwargs)
 
 
 def create_wandb_logger(
@@ -583,33 +589,33 @@ def add_dataset_args(
         "--dataset-name",
         "-d",
         type=str,
-        default=default_arguments.get("dataset", "mnist"),
-        choices=["mnist", "fashion_mnist", "cifar10"],
+        default=default_arguments.get("dataset_name", "mnist"),
+        choices=["mnist", "fashionmnist", "cifar10", "celeba"],
         help="The dataset to use.",
     )
     args.add_argument(
-        "--batch_size",
+        "--batch-size",
         "-b",
         type=int,
         default=default_arguments.get("batch_size", 32),
         help="The batch size.",
     )
     args.add_argument(
-        "--dataset-root",
+        "--root",
         "-r",
         type=str,
         default=default_arguments.get("root", "data"),
         help="The root directory for the dataset.",
     )
     args.add_argument(
-        "--num_workers",
+        "--num-workers",
         "-w",
         type=int,
         default=default_arguments.get("num_workers", 1),
         help="The number of workers.",
     )
     args.add_argument(
-        "--dataset-shuffle",
+        "--shuffle",
         action=argparse.BooleanOptionalAction,
         default=default_arguments.get("shuffle", True),
         help="Shuffle the dataset.",
@@ -631,40 +637,39 @@ def add_wandb_args(
     args.add_argument(
         "--wandb",
         action=argparse.BooleanOptionalAction,
-        default=default_arguments.get("wandb", False),
+        default=False,
         help="Whether to use Weights & Biases.",
     )
     args.add_argument(
-        "--wandb-project",
+        "--project",
         type=str,
         default=default_arguments.get("project", "diffugan"),
         help="The name of the Weights & Biases project.",
     )
     args.add_argument(
-        "--wandb-name",
+        "--run",
         type=str,
-        default=default_arguments.get("name", "diffugan-run"),
+        default=default_arguments.get("name", "run"),
         help="The name of the Weights & Biases run.",
     )
     args.add_argument(
-        "--wandb-notes",
+        "--notes",
         type=str,
         default=default_arguments.get("notes", ""),
         help="The notes to be added to the Weights & Biases run.",
     )
     args.add_argument(
-        "--wandb-tags",
+        "--tags",
         type=str,
         nargs="+",
         default=default_arguments.get("tags", []),
         help="The tags to be added to the Weights & Biases run.",
     )
     args.add_argument(
-        "--wandb-group",
+        "--group",
         type=str,
         default=default_arguments.get("group", ""),
         help="The name of the group to which the Weights & Biases run belongs.",
     )
     logger.debug("Added Weights & Biases arguments to the parser.")
-    logger.debug(args)
     return args
