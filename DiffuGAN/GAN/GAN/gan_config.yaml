@@ -1,6 +1,6 @@
 ---
 dataset_config:
-  name: mnist
+  dataset_name: mnist
   batch_size: 32
   root: data
   train: True
@@ -8,7 +8,7 @@ dataset_config:
   num_workers: 1
 
 wandb_config:
-  name: run_1
+  run: run_1
   project: diffugan
   tags:
     - GAN
@@ -39,41 +39,35 @@ discriminator_config:
     - 28
     - 28
   layer_sizes:
-    - 256
     - 512
-    - 1024
+    - 256
+    - 128
   activation:
     name: relu
     params: {}
-  final_activation:
-    name: sigmoid
   dropout_rates:
     - 0.3
     - 0.3
 
 gan_config:
-  generator:
-    name: fnn_generator
-    optimizer:
-      name: Adam
-      params:
-        lr: 0.0002
-        betas:
-          - 0.5
-          - 0.999
-  discriminator:
-    name: fnn_discriminator
-    optimizer:
-      name: Adam
-      params:
-        lr: 0.0002
-        betas:
-          - 0.5
-          - 0.999
-  loss:
-    name: BCELoss
-    params: {}
+  generator_optimizer:
+    name: Adam
+    params:
+      lr: 0.0002
+      betas:
+        - 0.5
+        - 0.999
+  discriminator_optimizer:
+    name: Adam
+    params:
+      lr: 0.0002
+      betas:
+        - 0.5
+        - 0.999
   k: 1
   epochs: 20
-  max_iteration_per_epoch: None
+  max_iteration_per_epoch:
   log_interval: 100
+  wanbd:
+  generator_loss_to_use: "bce"
+  max_step_for_og_loss: 1000
