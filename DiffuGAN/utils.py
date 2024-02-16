@@ -4,6 +4,7 @@ from .env import env
 
 import logging
 import argparse
+import inspect
 from typing import Union, Any
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -60,6 +61,57 @@ def create_simple_logger(
 
 
 logger = create_simple_logger("utils", env.LOG_LEVEL)
+
+
+def get_function_arguments(func: callable) -> list[str]:
+    """Returns the names of the arguments of the given function.
+
+    Parameters
+    ----------
+    func : callable
+        The function.
+
+    Returns
+    -------
+    list[str]
+        The names of the arguments of the function.
+    """
+    return inspect.getfullargspec(func).args
+
+
+def update_kwargs_for_function(
+    func: callable, kwargs: dict[str, any], raise_error: bool = False
+) -> dict[str, any]:
+    """Updates the given keyword arguments to include only those that are supported by the function.
+
+    Parameters
+    ----------
+    func : callable
+        The function.
+    kwargs : dict[str, any]
+        The keyword arguments to be updated.
+    raise_error : bool, optional
+        Whether to raise an error if an unsupported argument is found. Default is False.
+
+    Returns
+    -------
+    dict[str, any]
+        The updated keyword arguments.
+    """
+    supported_args = get_function_arguments(func)
+    logger.debug(
+        f"Supported arguments for the function {func.__name__}: {supported_args}"
+    )
+    all_args = list(kwargs.keys())
+    for arg in all_args:
+        if arg not in supported_args:
+            msg = f"Argument {arg} is not supported by the function {func.__name__}."
+            if raise_error:
+                logger.error(msg)
+                raise ValueError(msg)
+            logger.info(msg)
+            kwargs.pop(arg)
+    return kwargs
 
 
 def is_jupyter_notebook() -> bool:
@@ -386,7 +438,7 @@ def parse_activation(name: str, **kwargs: dict[str, Any]) -> torch.nn.Module:
     name = name.lower()
     str_to_activation_map = {
         "relu": torch.nn.ReLU,
-        "leaky_relu": torch.nn.LeakyReLU,
+        "leakyrelu": torch.nn.LeakyReLU,
         "tanh": torch.nn.Tanh,
         "sigmoid": torch.nn.Sigmoid,
         "softmin": torch.nn.Softmin,
