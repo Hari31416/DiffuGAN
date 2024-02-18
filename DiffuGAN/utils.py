@@ -141,6 +141,22 @@ def is_jupyter_notebook() -> bool:
     return is_jupyter
 
 
+class ScaleTransform:
+    def __init__(self, scale_type: str = "0-1") -> None:
+        self.scale_type = scale_type
+
+    def __call__(self, img: torch.Tensor) -> torch.Tensor:
+        min_val = torch.min(img)
+        max_val = torch.max(img)
+        if self.scale_type == "0-1":
+            img = (img - min_val) / (max_val - min_val)
+        elif self.scale_type == "-1-1":
+            img = 2 * (img - min_val) / (max_val - min_val) - 1
+        else:
+            raise ValueError("Invalid scale type. Must be '0-1' or '-1-1'")
+        return img
+
+
 class ImageDataset(Dataset):
     """A class that fetches some built-in datasets and provides a simple interface to access them. The class also provides methods to transform the data and to create a DataLoader."""
 
