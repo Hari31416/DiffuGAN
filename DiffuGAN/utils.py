@@ -174,7 +174,8 @@ class ImageDataset(Dataset):
         self,
         dataset_name: str,
         root: str,
-        transform: Union[torch.nn.Module, None] = None,
+        extra_transforms_to_use: list[torch.nn.Module] = [],
+        scale_type: str = "0-1",
         train: bool = True,
         **kwargs: dict[str, any],
     ) -> torch.utils.data.Dataset:
@@ -186,8 +187,10 @@ class ImageDataset(Dataset):
             Name of the dataset to be loaded. Currently, only "mnist" is supported.
         root : str
             The root directory where the dataset is stored.
-        transform : torch.nn.Module
-            The transformation to be applied to the data.
+        extra_transforms_to_use : list[torch.nn.Module]
+            A list if additional transformations to be applied to the images. By default, only the `ToTensor` transformation and scale transformation are applied (if `scale_type` is not None).
+        scale_type : str
+            The type of scaling to be applied to the images. Must be one of "0-1" or "-1-1". 0-1 scaling scales the images to the range [0, 1] and -1-1 scaling scales the images to the range [-1, 1].
         train : bool
             Whether to load the training data.
 
@@ -203,11 +206,20 @@ class ImageDataset(Dataset):
         torch.utils.data.Dataset
             The dataset object.
         """
-        if transform is None:
+        # start with the ToTensor transformation
+        transforms_ = [transforms.ToTensor()]
+        # if extra_transforms_to_use is not None, add them to the list of transforms
+        if extra_transforms_to_use is not None:
             self.logger.info(
-                "No transformation provided. Using the default transformation, `ToTensor`."
+                "Adding extra transformations to the list of transformations."
             )
-            transform = transforms.ToTensor()
+            transforms_.extend(extra_transforms_to_use)
+
+        # add scale transform if scale_type is not None
+        if scale_type is not None:
+            self.logger.info(f"Scaling the images to the range {scale_type}.")
+            transforms_.append(ScaleTransform(scale_type))
+        transform = transforms.Compose(transforms_)
 
         dataset_name = dataset_name.lower()
         dataset_name_to_class_map = {
@@ -242,7 +254,8 @@ class ImageDataset(Dataset):
         dataset_name: str,
         batch_size: int,
         root: str = "data",
-        transform: Union[torch.nn.Module, None] = None,
+        extra_transforms_to_use: list[torch.nn.Module] = [],
+        scale_type: str = "0-1",
         train: bool = True,
         shuffle: bool = True,
         num_workers: int = 1,
@@ -257,8 +270,12 @@ class ImageDataset(Dataset):
             Name of the dataset to be loaded.
         batch_size : int
             The batch size.
-        transform : torch.nn.Module
-            The transformation to be applied to the data.
+        extra_transforms_to_use : list[torch.nn.Module]
+            A list if additional transformations to be applied to the images. By default, only the `ToTensor` transformation and scale transformation are applied (if `scale_type` is not None).
+        root : str
+            The root directory where the dataset is stored.
+        scale_type : str
+            The type of scaling to be applied to the images. Must be one of "0-1" or "-1-1". 0-1 scaling scales the images to the range [0, 1] and -1-1 scaling scales the images to the range [-1, 1].
         train : bool
             Whether to load the training data.
 
@@ -284,10 +301,20 @@ class ImageDataset(Dataset):
             )
             # Meaning that both train and test data should be loaded
             train_dataset = self._load_dataset(
-                dataset_name, root, transform, train=True, **kwargs
+                dataset_name,
+                root,
+                extra_transforms_to_use,
+                scale_type=scale_type,
+                train=True,
+                **kwargs,
             )
             test_dataset = self._load_dataset(
-                dataset_name, root, transform, train=False, **kwargs
+                dataset_name,
+                root,
+                extra_transforms_to_use,
+                scale_type=scale_type,
+                train=False,
+                **kwargs,
             )
             return (
                 DataLoader(
@@ -306,7 +333,12 @@ class ImageDataset(Dataset):
 
         self.logger.info(f"Loading {dataset_name} dataset.")
         dataset = self._load_dataset(
-            dataset_name, root, transform, train=train, **kwargs
+            dataset_name,
+            root,
+            extra_transforms_to_use,
+            scale_type=scale_type,
+            train=train,
+            **kwargs,
         )
         return DataLoader(
             dataset,
@@ -613,7 +645,7 @@ def add_dataset_args(
         "--batch-size",
         "-b",
         type=int,
-        default=default_arguments.get("batch_size", 32),
+        default=default_arguments.get("batch_size", 64),
         help="The batch size.",
     )
     args.add_argument(
@@ -622,6 +654,13 @@ def add_dataset_args(
         type=str,
         default=default_arguments.get("root", "data"),
         help="The root directory for the dataset.",
+    )
+    args.add_argument(
+        "--scale-type",
+        type=str,
+        default=default_arguments.get("scale_type", "0-1"),
+        help="The root directory for the dataset.",
+        choices=["0-1", "-1-1"],
     )
     args.add_argument(
         "--num-workers",

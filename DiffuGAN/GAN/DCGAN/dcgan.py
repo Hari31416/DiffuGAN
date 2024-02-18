@@ -185,12 +185,18 @@ class ConvGenerator(nn.Module):
                 mode=self.upscale_mode,
                 channels=conv_filters[i + 1],
             )
+            # Add batch norm layer
+            batch_norm = nn.BatchNorm2d(conv_filters[i + 1])
             layers.append(conv_layer)
             self.logger.debug(
                 f"Added Conv2d layer with in_channels={conv_filters[i]} and out_channels={conv_filters[i+1]}"
             )
             layers.append(self.activation)
             self.logger.debug(f"Added {self.activation} layer")
+            layers.append(batch_norm)
+            self.logger.debug(
+                f"Added BatchNorm2d layer with num_features={conv_filters[i+1]}"
+            )
             layers.append(up_scale_layer)
             self.logger.debug(f"Added upscaling layer")
 

@@ -58,6 +58,7 @@ def create_configs(args: argparse.ArgumentParser) -> dict[str : dict[str:any]]:
         "batch_size": args.batch_size,
         "root": args.root,
         "num_workers": args.num_workers,
+        "scale_type": args.scale_type,
         "shuffle": args.shuffle,
         "train": args.split_train,
     }
