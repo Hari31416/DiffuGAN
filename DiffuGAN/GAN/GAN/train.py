@@ -1,4 +1,4 @@
-from .gan import FCNGenerator, FCNDiscriminator, FCNGAN
+from .gan import FCNGenerator, FCNDiscriminator, FCNGAN, GAN
 from DiffuGAN.utils import (
     add_dataset_args,
     add_wandb_args,
@@ -7,6 +7,7 @@ from DiffuGAN.utils import (
     ImageDataset,
 )
 
+import torch
 import argparse
 import yaml
 import os
@@ -322,7 +323,12 @@ def arg_parse() -> argparse.Namespace:
     return args.parse_args()
 
 
-def main(args: argparse.Namespace) -> None:
+def main(
+    args: argparse.Namespace,
+    gan_object: GAN = FCNGAN,
+    generator: torch.nn.Module = FCNGenerator,
+    discriminator: torch.nn.Module = FCNDiscriminator,
+) -> None:
     """The main function. The function creates the configuration and trains the GAN."""
     if args.f:
         # if a file is provided, load the configuration from the file
@@ -333,6 +339,7 @@ def main(args: argparse.Namespace) -> None:
         # create the configuration from the arguments
         logger.info("Creating the configuration from the arguments.")
         config = create_configs(args)
+    logger.info(f"Using {gan_object.__name__}")
     logger.debug(config)
     # return
     # load the dataset
@@ -345,11 +352,11 @@ def main(args: argparse.Namespace) -> None:
     logger.info(f"Dataset loaded. Image shape: {image_shape}")
     # create the generator
     generator_config = config["generator_config"]
-    generator = FCNGenerator(image_shape=image_shape, **generator_config)
+    generator = generator(image_shape=image_shape, **generator_config)
     logger.info("Generator created.")
     # create the discriminator
     discriminator_config = config["discriminator_config"]
-    discriminator = FCNDiscriminator(image_shape=image_shape, **discriminator_config)
+    discriminator = discriminator(image_shape=image_shape, **discriminator_config)
     logger.info("Discriminator created.")
     # create wandb
     wandb_config = config["wandb_config"]
@@ -378,18 +385,20 @@ def main(args: argparse.Namespace) -> None:
     gan_config_for_init = {
         k: v for k, v in gan_config.items() if k not in gan_config_for_train_keys
     }
-    gan = FCNGAN(
+    gan = gan_object(
         generator,
         discriminator,
         wandb_run=wandb_run,
         config=config,
         **gan_config_for_init,
     )
-    logger.info("FCNGAN created.")
+    logger.info("WGAN created.")
     # train the GAN
     gan.train(**gan_config_for_train)
 
 
 if __name__ == "__main__":
     args = arg_parse()
-    main(args)
+    main(
+        args, gan_object=FCNGAN, generator=FCNGenerator, discriminator=FCNDiscriminator
+    )
