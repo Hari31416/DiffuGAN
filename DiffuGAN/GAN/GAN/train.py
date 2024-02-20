@@ -378,7 +378,13 @@ def main(args: argparse.Namespace) -> None:
     gan_config_for_init = {
         k: v for k, v in gan_config.items() if k not in gan_config_for_train_keys
     }
-    gan = FCNGAN(generator, discriminator, wandb_run=wandb_run, **gan_config_for_init)
+    gan = FCNGAN(
+        generator,
+        discriminator,
+        wandb_run=wandb_run,
+        config=config,
+        **gan_config_for_init,
+    )
     logger.info("FCNGAN created.")
     # train the GAN
     gan.train(**gan_config_for_train)
