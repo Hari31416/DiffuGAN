@@ -2,8 +2,11 @@ __pycache__
 *.ipynb_checkpoints
 # temporary jupyter notebook files
 *temp*.ipynb
+*temp*.py
 # downloaded data files.
 data
 .env
 # wandb files
 wandb
+# experiment files
+*experiments*.*py*
