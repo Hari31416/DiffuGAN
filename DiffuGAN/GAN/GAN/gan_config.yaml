@@ -72,3 +72,5 @@ gan_config:
   wandb:
   generator_loss_to_use: "bce"
   max_step_for_og_loss: 100
+  image_save_path:
+  image_save_interval: 1000

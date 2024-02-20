@@ -10,6 +10,10 @@ import torch
 import torch.nn as nn
 import numpy as np
 import wandb
+import os
+import yaml
+
+CUR_DIR = os.getcwd()
 
 
 class FCNGenerator(nn.Module):
@@ -103,6 +107,7 @@ class FCNGenerator(nn.Module):
 
     def generate(self, z: torch.Tensor, return_tensor: bool = False):
         """Generates the images from the noise vectors. Makes sure that the output is between 0 and 1."""
+        self.model.eval()
         img = self(z)
         if return_tensor:
             return img
@@ -227,6 +232,7 @@ class GAN:
         generator_optimizer_kwargs: dict = {"lr": 0.002},
         discriminator_optimizer_kwargs: dict = {"lr": 0.002},
         wandb_run: Union[wandb.sdk.wandb_run.Run, None] = None,
+        config: dict = {},
     ):
         """Initializes the GAN model
 
@@ -248,6 +254,8 @@ class GAN:
             The keyword arguments to pass to the discriminator optimizer, by default `{"lr": 0.002}`
         wandb_run : Union[wandb.sdk.wandb_run.Run, None], optional
             The wandb run object to log the training, by default None
+        config : dict, optional
+            The configuration dictionary, by default {}. This will be passed to the wandb run object if it is not None and will be saved locally if the model is saved
         """
         self.logger = create_simple_logger("GAN")
         self.generator = generator
@@ -265,9 +273,11 @@ class GAN:
         if wandb_run is not None:
             self.use_wandb = True
             self.wandb_run = wandb_run
+            self.wandb_run.config.update(config)
         else:
             self.use_wandb = False
         self.step_count = 0  # global step count
+        self.config = config
 
     def generator_loss(self, real: torch.Tensor, fake: torch.Tensor):
         """Calculates the generator loss. This is a dummy function and should be overridden in the child classes"""
@@ -324,8 +334,23 @@ class GAN:
             }
         )
 
+    def _get_absolute_path(self, path: str):
+        """Returns the absolute path of the specified path"""
+        if path.startswith(os.path.sep):
+            self.logger.debug(f"Using the absolute path: {path}")
+            return path
+        path = os.path.join(CUR_DIR, path)
+        self.logger.debug(f"Using the relative path: {path}")
+        return path
+
     def plot_generated_images(
-        self, noises: torch.Tensor, plotter: ImagePlotter, epoch: int, batch_idx: int
+        self,
+        noises: torch.Tensor,
+        plotter: ImagePlotter,
+        epoch: int,
+        batch_idx: int,
+        image_save_path: Union[str, None],
+        save_image: bool = False,
     ):
         """Plots the generated images
 
@@ -339,6 +364,10 @@ class GAN:
             The current epoch
         batch_idx : int
             The current batch index
+        image_save_path : Union[str, None]
+            The path to save the images, by default None
+        save_image : bool
+            Whether to save the image or not
 
         Returns
         -------
@@ -349,8 +378,71 @@ class GAN:
             fake_images,
             return_type="numpy",
         )
-        title = f"Generated Images (Epoch: {epoch}, Batch: {batch_idx})"
-        plotter.update_image(grid, title=title)
+        title = f"Generated Images (Epoch: {epoch}, Batch: {batch_idx}, Step: {self.step_count})"
+        if image_save_path and save_image:
+            step_number = str(self.step_count).zfill(5)
+            image_name = f"generated_images_{step_number}.png"
+            # if the path is absolute, use it as is, else relative to the current file
+            directory = self._get_absolute_path(image_save_path)
+            os.makedirs(directory, exist_ok=True)
+            path_to_save = os.path.join(directory, image_name)
+        else:
+            path_to_save = None
+
+        plotter.update_image(grid, title=title, path_to_save=path_to_save)
+
+    def save_models(self, path: str):
+        """Saves the model to the specified path
+
+        Parameters
+        ----------
+        path : str
+            The path to save the model
+
+        Returns
+        -------
+        None
+        """
+        path_to_save = self._get_absolute_path(path)
+        self.logger.info(f"Saving the model to {path_to_save}")
+        os.makedirs(path_to_save, exist_ok=True)
+        model_file_name = os.path.join(path_to_save, "gan_models.pt")
+        torch.save(
+            {
+                "generator": self.generator.state_dict(),
+                "discriminator": self.discriminator.state_dict(),
+                "optimizer_G": self.optimizer_G.state_dict(),
+                "optimizer_D": self.optimizer_D.state_dict(),
+            },
+            model_file_name,
+        )
+        # save the config as yaml
+        config_name = "config.yaml"
+        config_path = os.path.join(path_to_save, config_name)
+        config_to_yaml = yaml.dump(self.config)
+        with open(config_path, "w") as f:
+            f.write(config_to_yaml)
+
+    def load_models(self, path: str):
+        """Loads the model from the specified path
+
+        Parameters
+        ----------
+        path : str
+            The path to load the model from
+
+        Returns
+        -------
+        None
+        """
+        path_to_load = self._get_absolute_path(path)
+        file_to_load = os.path.join(path_to_load, "gan_models.pt")
+        self.logger.info(f"Loading the model from {file_to_load}")
+        checkpoint = torch.load(file_to_load)
+        self.generator.load_state_dict(checkpoint["generator"])
+        self.discriminator.load_state_dict(checkpoint["discriminator"])
+        self.optimizer_G.load_state_dict(checkpoint["optimizer_G"])
+        self.optimizer_D.load_state_dict(checkpoint["optimizer_D"])
 
     def train(
         self,
@@ -359,6 +451,9 @@ class GAN:
         max_iteration_per_epoch: Union[int, None] = None,
         log_interval: int = 100,
         image_plot_interval: int = 0,
+        image_save_path: Union[str, None] = None,
+        image_save_interval: int = 1000,
+        model_save_path: Union[str, None] = None,
     ):
         """Trains the GAN model
 
@@ -374,7 +469,12 @@ class GAN:
             The interval at which to log the losses and images, by default 100
         image_plot_interval : int, optional
             The interval at which to plot the generated images. Images will not be plotted if this is 0, by default 0
-
+        image_save_path : Union[str, None], optional
+            The path to save the images, by default None. If None, the images will not be saved
+        image_save_interval : int, optional
+            The interval at which to save the images, by default 1000
+        model_save_path : Union[str, None], optional
+            The path to save the model, by default None. If this is not None, the model will be saved after training
         Returns
         -------
         None
@@ -385,7 +485,8 @@ class GAN:
         plotter = ImagePlotter(figsize=(14, 14))
         if not image_plot_interval:
             self.logger.info("image_plot_interval is 0. Images will not be plotted")
-
+        image_save_to_plot_ratio = image_save_interval // image_plot_interval
+        image_plot_count = 0
         # this is to have the same images for each epoch while logging
         for epoch in range(epochs):
             for batch_idx, (imgs, _) in enumerate(dataset):
@@ -416,7 +517,19 @@ class GAN:
                     if self.use_wandb:
                         self.log_to_wandb(d_loss, g_loss, real_imgs, noises)
                 if image_plot_interval and batch_idx % image_plot_interval == 0:
-                    self.plot_generated_images(noises, plotter, epoch, batch_idx)
+                    if image_plot_count % image_save_to_plot_ratio == 0:
+                        save_image = True
+                    else:
+                        save_image = False
+                    self.plot_generated_images(
+                        noises,
+                        plotter,
+                        epoch,
+                        batch_idx,
+                        image_save_path,
+                        save_image=save_image,
+                    )
+                    image_plot_count += 1
 
                 if (
                     max_iteration_per_epoch is not None
@@ -428,6 +541,8 @@ class GAN:
         self.logger.info("Training complete")
         if self.use_wandb:
             self.wandb_run.finish()
+        if model_save_path:
+            self.save_models(model_save_path)
         return losses
 
 
@@ -446,6 +561,7 @@ class FCNGAN(GAN):
         generator_loss_to_use: str = "bce",
         max_step_for_og_loss: int = 100,
         wandb_run: Union[wandb.sdk.wandb_run.Run, None] = None,
+        config: dict = {},
     ):
         """Initializes the GAN model
 
@@ -476,6 +592,8 @@ class FCNGAN(GAN):
             The maximum number of steps to use the original GAN loss, by default 100
         wandb_run : Union[wandb.sdk.wandb_run.Run, None], optional
             The wandb run object to log the training, by default None
+        config : dict, optional
+            The configuration dictionary, by default {}. This will be passed to the wandb run object if it is not None and will be saved locally if the model is saved
         """
         super().__init__(
             generator,
@@ -486,6 +604,7 @@ class FCNGAN(GAN):
             generator_optimizer_kwargs,
             discriminator_optimizer_kwargs,
             wandb_run,
+            config,
         )
         self.generator_loss_to_use = generator_loss_to_use
         self.max_step_for_og_loss = max_step_for_og_loss

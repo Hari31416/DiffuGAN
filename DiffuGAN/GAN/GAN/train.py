@@ -81,6 +81,7 @@ def create_configs(args: argparse.ArgumentParser) -> dict[str : dict[str:any]]:
         "layer_sizes": list(map(int, args.g_layer_sizes)),
         "activation": args.g_activation,
         "activation_kwargs": {"negative_slope": args.g_activation_negative_slope},
+        "final_activation": args.g_final_activation,
     }
 
     # discriminator_config
@@ -104,6 +105,9 @@ def create_configs(args: argparse.ArgumentParser) -> dict[str : dict[str:any]]:
         "generator_loss_to_use": args.generator_loss_to_use,
         "max_step_for_og_loss": args.max_step_for_og_loss,
         "image_plot_interval": args.image_plot_interval,
+        "image_save_path": args.image_save_path,
+        "image_save_interval": args.image_save_interval,
+        "model_save_path": args.model_save_path,
     }
     config = {
         "dataset_config": dataset_config,
@@ -274,6 +278,24 @@ def add_gan_args(
         default=default_arguments.get("max_step_for_og_loss", 1000),
         help="The maximum step for og loss if og_bce is used.",
     )
+    args.add_argument(
+        "--image-save-path",
+        type=str,
+        default=default_arguments.get("image_save_path", None),
+        help="The path to save the images.",
+    )
+    args.add_argument(
+        "--image-save-interval",
+        type=int,
+        default=default_arguments.get("image_save_interval", 100),
+        help="The number of iterations after which to save the images.",
+    )
+    args.add_argument(
+        "--model-save-path",
+        type=str,
+        default=default_arguments.get("model_save_path", None),
+        help="The path to save the final model.",
+    )
     return args
 
 
@@ -345,6 +367,9 @@ def main(args: argparse.Namespace) -> None:
         "max_iteration_per_epoch",
         "log_interval",
         "image_plot_interval",
+        "image_save_path",
+        "image_save_interval",
+        "model_save_path",
     ]
     gan_config_for_train = {
         k: v for k, v in gan_config.items() if k in gan_config_for_train_keys
