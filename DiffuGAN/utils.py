@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
 import wandb
+from IPython.display import display
 
 
 def create_simple_logger(
@@ -421,6 +422,54 @@ def create_grid_from_batched_image(
     return grid
 
 
+class ImagePlotter:
+    """A class to display images. It can be used to display images in a loop."""
+
+    def __init__(
+        self,
+        cmap: str = "viridis",
+        **kwargs: dict[str, any],
+    ):
+        """Initializes the ImagePlotter object.
+
+        Parameters
+        ----------
+        title : str, optional
+            The title of the figure. Default is "".
+        cmap : str, optional
+            The colormap to be used. Default is "viridis".
+        kwargs
+            Additional keyword arguments to be passed to the `plt.subplots` method.
+        """
+
+        self.fig, self.ax = plt.subplots(**kwargs)
+        self.im = None
+        self.cmap = cmap
+
+    def update_image(
+        self,
+        image: np.ndarray,
+        title: str = "",
+    ) -> None:
+        channels = image.shape[-1]
+        if channels == 1 and self.cmap not in ["gray", "Greys"]:
+            cmap = "gray"
+        else:
+            cmap = self.cmap
+        if self.im is None:
+            self.im = self.ax.imshow(image, cmap=cmap)
+        else:
+            self.im.set_data(image)
+        self.ax.set_title(title)
+        self.ax.title.set_fontsize(20)
+        self.ax.axis("off")
+        plt.draw()
+        plt.pause(0.01)
+        # display the figure if running in a Jupyter notebook
+        if is_jupyter_notebook():
+            display(self.fig, clear=True)
+
+
 def show_image(
     image: Union[torch.Tensor, np.ndarray, Image.Image],
     title: str = "",
@@ -456,8 +505,8 @@ def show_image(
     if isinstance(image, Image.Image):
         logger.debug("Converting PIL image to numpy.")
         image = np.array(image)
-    channels = image.shape[-1]
 
+    channels = image.shape[-1]
     if channels == 1 and cmap not in ["gray", "Greys"]:
         cmap = "gray"
     ax.imshow(image, cmap=cmap)
