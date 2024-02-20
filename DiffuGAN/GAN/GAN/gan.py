@@ -444,6 +444,14 @@ class GAN:
         self.optimizer_G.load_state_dict(checkpoint["optimizer_G"])
         self.optimizer_D.load_state_dict(checkpoint["optimizer_D"])
 
+    def after_discriminator_update(self):
+        """A function to be called after updating the discriminator. This can be overridden in the child classes"""
+        pass
+
+    def after_generator_update(self):
+        """A function to be called after updating the generator. This can be overridden in the child classes"""
+        pass
+
     def train(
         self,
         dataset: torch.utils.data.DataLoader,
@@ -500,12 +508,14 @@ class GAN:
                 )  # need to detach the fake_imgs tensor to avoid backpropagating through the generator
                 d_loss.backward()
                 self.optimizer_D.step()
+                self.after_discriminator_update()
 
                 if batch_idx % self.k == 0:
                     self.optimizer_G.zero_grad()
                     g_loss = self.generator_loss(real=real_imgs, fake=fake_imgs)
                     g_loss.backward()
                     self.optimizer_G.step()
+                    self.after_generator_update()
 
                 if batch_idx % log_interval == 0:
                     d_loss = d_loss.item()
