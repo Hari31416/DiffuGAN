@@ -68,7 +68,6 @@ class WGAN(GAN):
         return fake_part - real_part
 
     def after_discriminator_update(self):
-        """A function to be called after updating the discriminator. This can be overridden in the child classes"""
-        # clip weights
+        """Clamp the weights of the discriminator to a small range to enforce the Lipschitz constraint"""
         for p in self.discriminator.parameters():
             p.data.clamp_(-self.c, self.c)
