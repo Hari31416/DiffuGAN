@@ -2,19 +2,17 @@ from DiffuGAN.utils import (
     create_simple_logger,
     parse_activation,
     parse_optimizer,
-    show_image,
     create_grid_from_batched_image,
+    ImagePlotter,
 )
 from typing import Union
 import torch
 import torch.nn as nn
-import torch.optim as optim
-
 import numpy as np
 import wandb
 
 
-class FNNGenerator(nn.Module):
+class FCNGenerator(nn.Module):
 
     def __init__(
         self,
@@ -23,9 +21,9 @@ class FNNGenerator(nn.Module):
         layer_sizes: list[int] = [128, 256, 512],
         activation: str = "relu",
         activation_kwargs: dict = {},
-        final_activation: str = "sigmoid",
+        final_activation: str = "tanh",
     ):
-        """Initializes the FNNGenerator
+        """Initializes the FCNGenerator
 
         Parameters
         ----------
@@ -42,14 +40,14 @@ class FNNGenerator(nn.Module):
         final_activation : str, optional
             The final activation function to use, by default "sigmoid"
         """
-        super(FNNGenerator, self).__init__()
+        super(FCNGenerator, self).__init__()
 
         self.image_shape = image_shape
         self.latent_dimension = latent_dimension
         self.layer_sizes = layer_sizes
         self.activation = parse_activation(activation, **activation_kwargs)
         self.final_activation = parse_activation(final_activation)
-        self.logger = create_simple_logger("FNNGenerator")
+        self.logger = create_simple_logger("FCNGenerator")
         self.model = self.build_module()
 
     def build_module(self):
@@ -58,7 +56,9 @@ class FNNGenerator(nn.Module):
         """
         layers = []
         layer_sizes = (
-            [self.latent_dimension] + self.layer_sizes + [int(np.prod(self.image_shape))]
+            [self.latent_dimension]
+            + self.layer_sizes
+            + [int(np.prod(self.image_shape))]
         )
 
         for i in range(len(layer_sizes) - 1):
@@ -84,7 +84,7 @@ class FNNGenerator(nn.Module):
 
         return nn.Sequential(*layers)
 
-    def forward(self, z):
+    def forward(self, z: torch.Tensor):
         """Does a forward pass through the generator
 
         Parameters
@@ -101,33 +101,34 @@ class FNNGenerator(nn.Module):
         img = img.view(img.size(0), *self.image_shape)
         return img
 
-    def generate(self, z, show=False, return_tensor=False):
+    def generate(self, z: torch.Tensor, return_tensor: bool = False):
+        """Generates the images from the noise vectors. Makes sure that the output is between 0 and 1."""
         img = self(z)
-        numpy_image = img.detach().cpu().numpy()
-        if show:
-            grid = create_grid_from_batched_image(
-                numpy_image,
-                pad_value=1,
-                return_type="numpy",
-            )
-            show_image(grid, title="Generated Images")
         if return_tensor:
             return img
+        # permute the dimensions to make it suitable for plotting
+        img = img.permute(0, 2, 3, 1)
+        numpy_image = img.detach().cpu().numpy()
+        # normalize the image
+        numpy_image = (numpy_image - numpy_image.min()) / (
+            numpy_image.max() - numpy_image.min()
+        )
+
         return numpy_image
 
 
-class FNNDiscriminator(nn.Module):
+class FCNDiscriminator(nn.Module):
     """A simple feedforward neural network discriminator for GANs"""
 
     def __init__(
         self,
         image_shape: tuple[int],
         layer_sizes: list[int] = [512, 256, 128],
-        activation: str = "relu",
-        activation_kwargs: dict = {},
+        activation: str = "LeakyReLU",
+        activation_kwargs: dict = {"negative_slope": 0.2},
         dropout_rates: Union[list[float], float] = 0.3,
     ):
-        """Initializes the FNNDiscriminator
+        """Initializes the FCNDiscriminator
 
         Parameters
         ----------
@@ -144,13 +145,13 @@ class FNNDiscriminator(nn.Module):
 
             Note that the length of the list should be `len(layer_sizes) - 1` since the first layer does not have a dropout layer and the last layer has the final activation function.
         """
-        super(FNNDiscriminator, self).__init__()
+        super(FCNDiscriminator, self).__init__()
 
         self.image_shape = image_shape
         self.layer_sizes = layer_sizes
         self.activation = parse_activation(activation, **activation_kwargs)
         self.final_activation = nn.Sigmoid()
-        self.logger = create_simple_logger("FNNDiscriminator")
+        self.logger = create_simple_logger("FCNDiscriminator")
         if isinstance(dropout_rates, float):
             self.dropout_rates = [dropout_rates] * (len(layer_sizes) - 1)
         elif len(dropout_rates) == 1:
@@ -214,7 +215,7 @@ class FNNDiscriminator(nn.Module):
 
 
 class GAN:
-    """A class to implement a simple GAN model. The model is trained using the ADAM optimizer and the BCE loss function."""
+    """An abstract GAN class to be used as a base class for other GAN models"""
 
     def __init__(
         self,
@@ -266,49 +267,27 @@ class GAN:
             self.wandb_run = wandb_run
         else:
             self.use_wandb = False
+        self.step_count = 0  # global step count
 
-    def generator_og_loss(self, fake: torch.Tensor):
-        """Calculates the loss function using:
-        L = log(1 - D(G(z)))
-        """
-        y_pred = self.discriminator(fake)
-        L = torch.log(1 - y_pred)
-        loss = torch.mean(y_pred)
-        return loss
-
-    def generator_loss(self, fake: torch.Tensor):
-        """Calculates the generator loss"""
-        fake_labels = torch.ones(fake.size(0), 1)
-        y_pred = self.discriminator(fake)
-        return self.bce_loss(y_pred, fake_labels)
-
-    def _get_generator_loss_function(
-        self,
-        generator_loss_to_use: str,
-        step_count: int,
-        max_step_for_og_loss: int = 1000,
-    ):
-        if generator_loss_to_use == "og":
-            return self.generator_og_loss
-        elif generator_loss_to_use == "bce":
-            return self.generator_loss
-        elif generator_loss_to_use == "og_bce":
-            if step_count < max_step_for_og_loss:
-                return self.generator_og_loss
-            else:
-                return self.generator_loss
+    def generator_loss(self, real: torch.Tensor, fake: torch.Tensor):
+        """Calculates the generator loss. This is a dummy function and should be overridden in the child classes"""
+        msg = "The generator_loss method should be implemented"
+        self.logger.error(msg)
+        raise NotImplementedError(msg)
 
     def discriminator_loss(self, real: torch.Tensor, fake: torch.Tensor):
-        """Calculates the discriminator loss"""
-        real_labels = torch.ones(real.size(0), 1)
-        fake_labels = torch.zeros(fake.size(0), 1)
-        concat_images = torch.cat((real, fake), 0)
-        concat_labels = torch.cat((real_labels, fake_labels), 0)
-        y_pred = self.discriminator(concat_images)
-        d_loss = self.bce_loss(y_pred, concat_labels)
-        return d_loss
+        """Calculates the discriminator loss. Must be overridden in the child classes"""
+        msg = "The discriminator_loss method should be implemented"
+        self.logger.error(msg)
+        raise NotImplementedError(msg)
 
-    def log_to_wandb(self, d_loss, g_loss, real_imgs, noises):
+    def log_to_wandb(
+        self,
+        d_loss: torch.Tensor,
+        g_loss: torch.Tensor,
+        real_imgs: torch.Tensor,
+        noises: torch.Tensor,
+    ):
         """Logs the losses and some images to wandb
 
         Parameters
@@ -328,13 +307,13 @@ class GAN:
         """
         self.wandb_run.log({"D loss": d_loss, "G loss": g_loss})
         # save some images
-        real_imgs = real_imgs[:25]
+        max_images = min(25, real_imgs.size(0))
+        real_imgs = real_imgs[:max_images]
         real_imgs = real_imgs.permute(0, 2, 3, 1).detach().cpu().numpy()
         real_wandb = self.wandb_run.Image(
             create_grid_from_batched_image(real_imgs, return_type="numpy")
         )
-        fake_images = self.generator(noises)
-        fake_images = fake_images.permute(0, 2, 3, 1).detach().cpu().numpy()
+        fake_images = self.generator.generate(noises)
         fake_wandb = self.wandb_run.Image(
             create_grid_from_batched_image(fake_images, return_type="numpy")
         )
@@ -345,14 +324,41 @@ class GAN:
             }
         )
 
+    def plot_generated_images(
+        self, noises: torch.Tensor, plotter: ImagePlotter, epoch: int, batch_idx: int
+    ):
+        """Plots the generated images
+
+        Parameters
+        ----------
+        noises : torch.Tensor
+            The noise vectors to generate the images
+        plotter : ImagePlotter
+            The ImagePlotter object
+        epoch : int
+            The current epoch
+        batch_idx : int
+            The current batch index
+
+        Returns
+        -------
+        None
+        """
+        fake_images = self.generator.generate(noises)
+        grid = create_grid_from_batched_image(
+            fake_images,
+            return_type="numpy",
+        )
+        title = f"Generated Images (Epoch: {epoch}, Batch: {batch_idx})"
+        plotter.update_image(grid, title=title)
+
     def train(
         self,
         dataset: torch.utils.data.DataLoader,
         epochs: int,
         max_iteration_per_epoch: Union[int, None] = None,
         log_interval: int = 100,
-        generator_loss_to_use: str = "og_bce",
-        max_step_for_og_loss: int = 1000,
+        image_plot_interval: int = 0,
     ):
         """Trains the GAN model
 
@@ -366,26 +372,23 @@ class GAN:
             The maximum number of iterations to train for in each epoch, by default None
         log_interval : int, optional
             The interval at which to log the losses and images, by default 100
-        generator_loss_to_use : str, optional
-            The loss function to use for the generator, by default "og_bce"
-
-            - "og": Original GAN loss, which is `L = log(1 - D(G(z)))`
-            - "bce": Binary Cross Entropy loss which is `L = -log(D(G(z)))`
-            - "og_bce": Original GAN loss for the first `max_step_for_og_loss` steps and then BCE loss after that
-
-        max_step_for_og_loss : int, optional
-            The maximum number of steps to use the original GAN loss, by default 1000
+        image_plot_interval : int, optional
+            The interval at which to plot the generated images. Images will not be plotted if this is 0, by default 0
 
         Returns
         -------
         None
         """
         losses = {"D": [], "G": []}
+        # use the same noise vectors for each epoch for bettr comparison
         noises = torch.randn(49, self.generator.latent_dimension)
-        step_count = 0
+        plotter = ImagePlotter(figsize=(14, 14))
+        if not image_plot_interval:
+            self.logger.info("image_plot_interval is 0. Images will not be plotted")
+
         # this is to have the same images for each epoch while logging
         for epoch in range(epochs):
-            for i, (imgs, _) in enumerate(dataset):
+            for batch_idx, (imgs, _) in enumerate(dataset):
                 batch_size = imgs.size(0)
                 real_imgs = imgs
                 z = torch.randn(batch_size, self.generator.latent_dimension)
@@ -397,30 +400,142 @@ class GAN:
                 d_loss.backward()
                 self.optimizer_D.step()
 
-                if i % self.k == 0:
+                if batch_idx % self.k == 0:
                     self.optimizer_G.zero_grad()
-                    g_loss_func_to_use = self._get_generator_loss_function(
-                        generator_loss_to_use, step_count, max_step_for_og_loss
-                    )
-                    g_loss = g_loss_func_to_use(fake_imgs)
+                    g_loss = self.generator_loss(real=real_imgs, fake=fake_imgs)
                     g_loss.backward()
                     self.optimizer_G.step()
 
-                if i % log_interval == 0:
+                if batch_idx % log_interval == 0:
                     d_loss = d_loss.item()
                     g_loss = g_loss.item()
                     losses["D"].append(d_loss)
                     losses["G"].append(g_loss)
-                    self.logger.info(
-                        f"[Epoch {epoch}/{epochs}] [Batch {i}/{len(dataset)}] [D loss: {d_loss} | G loss: {g_loss}]"
-                    )
+                    msg = f"[Epoch {epoch}/{epochs}] [Batch {batch_idx}/{len(dataset)}] [D loss: {d_loss} | G loss: {g_loss}]"
+                    print(msg)
                     if self.use_wandb:
                         self.log_to_wandb(d_loss, g_loss, real_imgs, noises)
+                if image_plot_interval and batch_idx % image_plot_interval == 0:
+                    self.plot_generated_images(noises, plotter, epoch, batch_idx)
 
-                if max_iteration_per_epoch is not None and i >= max_iteration_per_epoch:
+                if (
+                    max_iteration_per_epoch is not None
+                    and batch_idx >= max_iteration_per_epoch
+                ):
                     break
-                step_count += 1
+                self.step_count += 1
 
         self.logger.info("Training complete")
         if self.use_wandb:
             self.wandb_run.finish()
+        return losses
+
+
+class FCNGAN(GAN):
+    """A class to implement a simple GAN model. The model is trained using the ADAM optimizer and the BCE loss function."""
+
+    def __init__(
+        self,
+        generator: nn.Module,
+        discriminator: nn.Module,
+        k: int = 1,
+        generator_optimizer: str = "adam",
+        discriminator_optimizer: str = "adam",
+        generator_optimizer_kwargs: dict = {"lr": 0.002},
+        discriminator_optimizer_kwargs: dict = {"lr": 0.002},
+        generator_loss_to_use: str = "bce",
+        max_step_for_og_loss: int = 100,
+        wandb_run: Union[wandb.sdk.wandb_run.Run, None] = None,
+    ):
+        """Initializes the GAN model
+
+        Parameters
+        ----------
+        generator : nn.Module
+            The generator model
+        discriminator : nn.Module
+            The discriminator model
+        k : int, optional
+            The number of iterations to train the discriminator for every iteration of the generator, by default 1
+        generator_optimizer : str, optional
+            The optimizer to use for the generator, by default "adam"
+        discriminator_optimizer : str, optional
+            The optimizer to use for the discriminator, by default "adam"
+        generator_optimizer_kwargs : dict, optional
+            The keyword arguments to pass to the generator optimizer, by default `{"lr": 0.002}`
+        discriminator_optimizer_kwargs : dict, optional
+            The keyword arguments to pass to the discriminator optimizer, by default `{"lr": 0.002}`
+        generator_loss_to_use : str, optional
+            The loss function to use for the generator, by default "bce"
+
+            - "og": Original GAN loss, which is `L = log(1 - D(G(z)))`
+            - "bce": Binary Cross Entropy loss which is `L = -log(D(G(z)))`
+            - "og_bce": Original GAN loss for the first `max_step_for_og_loss` steps and then BCE loss after that
+
+        max_step_for_og_loss : int, optional
+            The maximum number of steps to use the original GAN loss, by default 100
+        wandb_run : Union[wandb.sdk.wandb_run.Run, None], optional
+            The wandb run object to log the training, by default None
+        """
+        super().__init__(
+            generator,
+            discriminator,
+            k,
+            generator_optimizer,
+            discriminator_optimizer,
+            generator_optimizer_kwargs,
+            discriminator_optimizer_kwargs,
+            wandb_run,
+        )
+        self.generator_loss_to_use = generator_loss_to_use
+        self.max_step_for_og_loss = max_step_for_og_loss
+
+    def _generator_og_loss(self, fake: torch.Tensor):
+        """Calculates the loss function using:
+        L = log(1 - D(G(z)))
+        """
+        y_pred = self.discriminator(fake)
+        L = torch.log(1 - y_pred)
+        loss = torch.mean(L)
+        return loss
+
+    def _generator_bce_loss(self, fake: torch.Tensor):
+        """Calculates the generator loss"""
+        fake_labels = torch.ones(fake.size(0), 1)
+        y_pred = self.discriminator(fake)
+        return self.bce_loss(y_pred, fake_labels)
+
+    def generator_loss(self, real: torch.Tensor, fake: torch.Tensor):
+        """Calculates the generator loss kwargs has the following
+
+        - generator_loss_to_use: str
+            The loss function to use for the generator
+
+            - "og": Original GAN loss, which is `L = log(1 - D(G(z)))`
+            - "bce": Binary Cross Entropy loss which is `L = -log(D(G(z)))`
+            - "og_bce": Original GAN loss for the first `max_step_for_og_loss` steps and then BCE loss after that
+        - step_count: int
+            The current step count. This is used to switch between the two loss functions
+        - max_step_for_og_loss: int
+            The maximum number of steps to use the original GAN loss
+        """
+        if self.generator_loss_to_use == "og":
+            func = self._generator_og_loss
+        elif self.generator_loss_to_use == "bce":
+            func = self._generator_bce_loss
+        elif self.generator_loss_to_use == "og_bce":
+            if self.step_count < self.max_step_for_og_loss:
+                func = self._generator_og_loss
+            else:
+                func = self._generator_bce_loss
+        return func(fake)
+
+    def discriminator_loss(self, real: torch.Tensor, fake: torch.Tensor):
+        """Calculates the discriminator loss"""
+        real_labels = torch.ones(real.size(0), 1)
+        fake_labels = torch.zeros(fake.size(0), 1)
+        concat_images = torch.cat((real, fake), 0)
+        concat_labels = torch.cat((real_labels, fake_labels), 0)
+        y_pred = self.discriminator(concat_images)
+        d_loss = self.bce_loss(y_pred, concat_labels)
+        return d_loss

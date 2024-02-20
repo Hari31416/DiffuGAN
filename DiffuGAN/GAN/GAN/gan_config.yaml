@@ -1,8 +1,9 @@
 ---
 dataset_config:
   dataset_name: mnist
-  batch_size: 32
+  batch_size: 64
   root: data
+  scale_type: -1-1
   train: True
   shuffle: True
   num_workers: 1
@@ -23,15 +24,13 @@ generator_config:
     - 28
     - 28
   layer_sizes:
+    - 128
     - 256
     - 512
-    - 1024
   activation:
-    name: LeakyReLU
-    params:
-      negative_slope: 0.2
-  final_activation:
-    name: sigmoid
+    name: ReLU
+    params: {}
+  final_activation: Tanh
 
 discriminator_config:
   img_shape:
@@ -43,8 +42,9 @@ discriminator_config:
     - 256
     - 128
   activation:
-    name: relu
-    params: {}
+    name: LeakyReLU
+    params:
+      negative_slope: 0.2
   dropout_rates:
     - 0.3
     - 0.3
@@ -53,14 +53,14 @@ gan_config:
   generator_optimizer:
     name: Adam
     params:
-      lr: 0.0002
+      lr: 0.0001
       betas:
         - 0.5
         - 0.999
   discriminator_optimizer:
     name: Adam
     params:
-      lr: 0.0002
+      lr: 0.0001
       betas:
         - 0.5
         - 0.999
@@ -68,6 +68,7 @@ gan_config:
   epochs: 20
   max_iteration_per_epoch:
   log_interval: 100
-  wanbd:
+  image_plot_interval: 100
+  wandb:
   generator_loss_to_use: "bce"
-  max_step_for_og_loss: 1000
+  max_step_for_og_loss: 100

@@ -1,4 +1,4 @@
-from .gan import FNNGenerator, FNNDiscriminator, GAN
+from .gan import FCNGenerator, FCNDiscriminator, FCNGAN
 from DiffuGAN.utils import (
     add_dataset_args,
     add_wandb_args,
@@ -103,6 +103,7 @@ def create_configs(args: argparse.ArgumentParser) -> dict[str : dict[str:any]]:
         "log_interval": args.log_interval,
         "generator_loss_to_use": args.generator_loss_to_use,
         "max_step_for_og_loss": args.max_step_for_og_loss,
+        "image_plot_interval": args.image_plot_interval,
     }
     config = {
         "dataset_config": dataset_config,
@@ -111,12 +112,12 @@ def create_configs(args: argparse.ArgumentParser) -> dict[str : dict[str:any]]:
         "discriminator_config": d_config,
         "gan_config": gan_config,
     }
-    logger.info("Configuration created. Here is the configuration:")
-    logger.info(f"Dataset config: {dataset_config}")
-    logger.info(f"Wandb config: {wandb_config}")
-    logger.info(f"Generator config: {generator_config}")
-    logger.info(f"Discriminator config: {d_config}")
-    logger.info(f"GAN config: {gan_config}")
+    logger.info("Configuration created. Here is the configuration:\n")
+    logger.info(f"Dataset config: {dataset_config}\n")
+    logger.info(f"Wandb config: {wandb_config}\n")
+    logger.info(f"Generator config: {generator_config}\n")
+    logger.info(f"Discriminator config: {d_config}\n")
+    logger.info(f"GAN config: {gan_config}\n")
     return config
 
 
@@ -131,10 +132,10 @@ def add_generator_args(
         help="The latent dimension.",
     )
     args.add_argument(
-        "--g-layer_sizes",
+        "--g-layer-sizes",
         type=str,
         nargs="+",
-        default=default_arguments.get("layer_sizes", [256, 512, 1024]),
+        default=default_arguments.get("layer_sizes", [128, 256, 512]),
         help="The number of neurons in the layers.",
     )
     args.add_argument(
@@ -149,6 +150,13 @@ def add_generator_args(
         default=default_arguments["activation"]["params"].get("negative_slope", 1e-2),
         help="The negative slope for the LeakyReLU activation. To be used only if the activation is LeakyReLU.",
     )
+    args.add_argument(
+        "--g-final-activation",
+        type=str,
+        default=default_arguments.get("final_activation", "tanh"),
+        help="The final activation function to use for the generator.",
+        choices=["tanh", "sigmoid"],
+    )
     return args
 
 
@@ -157,10 +165,10 @@ def add_discriminator_args(
 ) -> argparse.ArgumentParser:
     """Adds the generator arguments to the argument parser."""
     args.add_argument(
-        "--d-layer_sizes",
+        "--d-layer-sizes",
         type=str,
         nargs="+",
-        default=default_arguments.get("layer_sizes", [256, 512, 1024]),
+        default=default_arguments.get("layer_sizes", [128, 256, 512]),
         help="The number of neurons in the layers.",
     )
     args.add_argument(
@@ -198,7 +206,7 @@ def add_gan_args(
     args.add_argument(
         "--g-lr",
         type=float,
-        default=default_arguments["generator_optimizer"]["params"].get("lr", 0.0002),
+        default=default_arguments["generator_optimizer"]["params"].get("lr", 0.0001),
         help="The learning rate for the generator.",
     )
     args.add_argument(
@@ -208,18 +216,18 @@ def add_gan_args(
         help="The optimizer to use for the generator.",
     )
     args.add_argument(
+        "--d-lr",
+        type=float,
+        default=default_arguments["discriminator_optimizer"]["params"].get(
+            "lr", 0.0001
+        ),
+        help="The learning rate for the discriminator.",
+    )
+    args.add_argument(
         "--d-optimizer",
         type=str,
         default=default_arguments["discriminator_optimizer"].get("name", "adam"),
         help="The optimizer to use for the discriminator.",
-    )
-    args.add_argument(
-        "--d-lr",
-        type=float,
-        default=default_arguments["discriminator_optimizer"]["params"].get(
-            "lr", 0.0002
-        ),
-        help="The learning rate for the discriminator.",
     )
     args.add_argument(
         "--betas",
@@ -246,6 +254,12 @@ def add_gan_args(
         type=int,
         default=default_arguments.get("log_interval", 100),
         help="The number of iterations after which to log the loss.",
+    )
+    args.add_argument(
+        "--image-plot-interval",
+        type=int,
+        default=default_arguments.get("image_plot_interval", 100),
+        help="The number of iterations after which to plot the sample images.",
     )
     args.add_argument(
         "--generator-loss-to-use",
@@ -297,7 +311,7 @@ def main(args: argparse.Namespace) -> None:
         # create the configuration from the arguments
         logger.info("Creating the configuration from the arguments.")
         config = create_configs(args)
-    logger.info(config)
+    logger.debug(config)
     # return
     # load the dataset
     dataset = ImageDataset().load_dataset(**config["dataset_config"])
@@ -309,11 +323,11 @@ def main(args: argparse.Namespace) -> None:
     logger.info(f"Dataset loaded. Image shape: {image_shape}")
     # create the generator
     generator_config = config["generator_config"]
-    generator = FNNGenerator(image_shape=image_shape, **generator_config)
+    generator = FCNGenerator(image_shape=image_shape, **generator_config)
     logger.info("Generator created.")
     # create the discriminator
     discriminator_config = config["discriminator_config"]
-    discriminator = FNNDiscriminator(image_shape=image_shape, **discriminator_config)
+    discriminator = FCNDiscriminator(image_shape=image_shape, **discriminator_config)
     logger.info("Discriminator created.")
     # create wandb
     wandb_config = config["wandb_config"]
@@ -330,8 +344,7 @@ def main(args: argparse.Namespace) -> None:
         "epochs",
         "max_iteration_per_epoch",
         "log_interval",
-        "generator_loss_to_use",
-        "max_step_for_og_loss",
+        "image_plot_interval",
     ]
     gan_config_for_train = {
         k: v for k, v in gan_config.items() if k in gan_config_for_train_keys
@@ -340,8 +353,8 @@ def main(args: argparse.Namespace) -> None:
     gan_config_for_init = {
         k: v for k, v in gan_config.items() if k not in gan_config_for_train_keys
     }
-    gan = GAN(generator, discriminator, wandb_run=wandb_run, **gan_config_for_init)
-    logger.info("GAN created.")
+    gan = FCNGAN(generator, discriminator, wandb_run=wandb_run, **gan_config_for_init)
+    logger.info("FCNGAN created.")
     # train the GAN
     gan.train(**gan_config_for_train)
 
