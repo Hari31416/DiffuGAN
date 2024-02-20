@@ -450,6 +450,7 @@ class ImagePlotter:
         self,
         image: np.ndarray,
         title: str = "",
+        path_to_save: Union[str, None] = None,
     ) -> None:
         channels = image.shape[-1]
         if channels == 1 and self.cmap not in ["gray", "Greys"]:
@@ -468,6 +469,8 @@ class ImagePlotter:
         # display the figure if running in a Jupyter notebook
         if is_jupyter_notebook():
             display(self.fig, clear=True)
+        if path_to_save is not None:
+            self.fig.savefig(path_to_save)
 
 
 def show_image(
@@ -544,6 +547,7 @@ def parse_activation(name: str, **kwargs: dict[str, Any]) -> torch.nn.Module:
         msg = f"Activation function {name} is not supported. Must be one of {list(str_to_activation_map.keys())}."
         logger.error(msg)
         raise NotImplementedError(msg)
+    logger.info(f"Creating activation function {name}.")
     # make sure that only those keyword arguments that are supported by the activation function are passed
     activation = str_to_activation_map[name]
     supported_kwargs = update_kwargs_for_function(activation, kwargs, raise_error=False)
@@ -579,6 +583,7 @@ def parse_optimizer(
         msg = f"Optimizer {name} is not supported. Must be one of {list(str_to_optimizer_map.keys())}."
         logger.error(msg)
         raise NotImplementedError(msg)
+    logger.info(f"Creating optimizer {name}.")
     # make sure that only those keyword arguments that are supported by the optimizer are passed
     optimizer = str_to_optimizer_map[name]
     supported_kwargs = update_kwargs_for_function(optimizer, kwargs, raise_error=False)
