@@ -18,8 +18,8 @@ wandb_config:
   group: gan
 
 generator_config:
-  latent_dim: 100
-  img_shape:
+  latent_dimension: 100
+  image_shape:
     - 1
     - 28
     - 28
@@ -33,7 +33,7 @@ generator_config:
   final_activation: Tanh
 
 discriminator_config:
-  img_shape:
+  image_shape:
     - 1
     - 28
     - 28
