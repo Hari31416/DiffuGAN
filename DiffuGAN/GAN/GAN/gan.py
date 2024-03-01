@@ -251,7 +251,7 @@ class FCNGAN(BaseGAN):
         config : dict, optional
             The configuration dictionary, by default {}. This will be passed to the wandb run object if it is not None and will be saved locally if the model is saved
         """
-        super(FCNGAN).__init__(
+        super(FCNGAN, self).__init__(
             generator,
             discriminator,
             k,
