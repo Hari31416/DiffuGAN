@@ -89,7 +89,7 @@ def create_configs(args: argparse.ArgumentParser) -> dict[str : dict[str:any]]:
     # discriminator_config
     d_config = {
         "layer_sizes": list(map(int, args.d_layer_sizes)),
-        "dropout_rates": list(map(float, args.d_dropout_rates)),
+        "dropout_rate": args.d_dropout_rate,
         "activation": args.d_activation,
         "activation_kwargs": {"negative_slope": args.d_activation_negative_slope},
     }
@@ -190,10 +190,9 @@ def add_discriminator_args(
         help="The negative slope for the LeakyReLU activation. To be used only if the activation is LeakyReLU.",
     )
     args.add_argument(
-        "--d-dropout-rates",
+        "--d-dropout-rate",
         type=float,
-        nargs="+",
-        default=default_arguments.get("dropout_rates", [0.3, 0.3]),
+        default=default_arguments.get("dropout_rate", 0.3),
     )
     return args
 
