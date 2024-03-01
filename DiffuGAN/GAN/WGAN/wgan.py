@@ -1,11 +1,11 @@
 from torch.nn.modules import Module
-from DiffuGAN.GAN.GAN import GAN
+from DiffuGAN.GAN.networks import BaseGAN
 from typing import Union
 import torch
 import wandb
 
 
-class WGAN(GAN):
+class WGAN(BaseGAN):
 
     def __init__(
         self,
@@ -20,7 +20,7 @@ class WGAN(GAN):
         config: dict = {},
         c: float = 0.01,
         **kwargs,
-    ):
+    ) -> None:
         """Initializes the GAN model
 
         Parameters
@@ -59,15 +59,17 @@ class WGAN(GAN):
         )
         self.c = c
 
-    def generator_loss(self, real: torch.Tensor, fake: torch.Tensor):
+    def generator_loss(self, real: torch.Tensor, fake: torch.Tensor) -> torch.Tensor:
         return -torch.mean(self.discriminator(fake))
 
-    def discriminator_loss(self, real: torch.Tensor, fake: torch.Tensor):
+    def discriminator_loss(
+        self, real: torch.Tensor, fake: torch.Tensor
+    ) -> torch.Tensor:
         real_part = torch.mean(self.discriminator(real))
         fake_part = torch.mean(self.discriminator(fake))
         return fake_part - real_part
 
-    def after_discriminator_update(self):
+    def after_discriminator_update(self) -> None:
         """Clamp the weights of the discriminator to a small range to enforce the Lipschitz constraint"""
         for p in self.discriminator.parameters():
             p.data.clamp_(-self.c, self.c)

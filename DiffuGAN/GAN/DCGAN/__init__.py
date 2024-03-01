@@ -1,1 +1,1 @@
-from .dcgan import *
+from .dcgan import ConvGenerator, ConvDiscriminator, DCGAN, WDCGAN

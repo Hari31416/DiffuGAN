@@ -1,4 +1,4 @@
-from .gan import FCNGenerator, FCNDiscriminator, FCNGAN, GAN
+from .gan import FCNGenerator, FCNDiscriminator, FCNGAN
 from DiffuGAN.utils import (
     add_dataset_args,
     add_wandb_args,
@@ -6,6 +6,7 @@ from DiffuGAN.utils import (
     create_wandb_logger,
     ImageDataset,
 )
+from DiffuGAN.GAN.networks import BaseGAN
 
 import torch
 import argparse
@@ -325,7 +326,7 @@ def arg_parse() -> argparse.Namespace:
 
 def main(
     args: argparse.Namespace,
-    gan_object: GAN = FCNGAN,
+    gan_object: BaseGAN = FCNGAN,
     generator: torch.nn.Module = FCNGenerator,
     discriminator: torch.nn.Module = FCNDiscriminator,
 ) -> None:

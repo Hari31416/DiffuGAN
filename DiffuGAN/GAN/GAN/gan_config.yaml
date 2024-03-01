@@ -45,9 +45,7 @@ discriminator_config:
     name: LeakyReLU
     params:
       negative_slope: 0.2
-  dropout_rates:
-    - 0.3
-    - 0.3
+  dropout_rate: 0.3
 
 gan_config:
   generator_optimizer:
