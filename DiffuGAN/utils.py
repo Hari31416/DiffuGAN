@@ -542,6 +542,7 @@ def parse_activation(name: str, **kwargs: dict[str, Any]) -> torch.nn.Module:
         "tanh": torch.nn.Tanh,
         "sigmoid": torch.nn.Sigmoid,
         "softmin": torch.nn.Softmin,
+        "linear": torch.nn.Identity,
     }
     if name not in str_to_activation_map:
         msg = f"Activation function {name} is not supported. Must be one of {list(str_to_activation_map.keys())}."
