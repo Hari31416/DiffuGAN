@@ -456,7 +456,9 @@ class BaseGAN:
             for batch_idx, (imgs, _) in enumerate(dataset):
                 batch_size = imgs.size(0)
                 real_imgs = imgs.to(self.device)
-                z = torch.randn(batch_size, self.generator.latent_dimension)
+                z = torch.randn(
+                    batch_size, self.generator.latent_dimension, device=self.device
+                )
                 fake_imgs = self.generator(z)
                 self.optimizer_D.zero_grad()
                 d_loss = self.discriminator_loss(
