@@ -215,6 +215,7 @@ class FCNGAN(BaseGAN):
         generator_optimizer_kwargs: dict = {"lr": 0.002},
         discriminator_optimizer_kwargs: dict = {"lr": 0.002},
         wandb_run: Union[wandb.sdk.wandb_run.Run, None] = None,
+        device: Union[str, None] = None,
         config: dict = {},
         generator_loss_to_use: str = "bce",
         max_step_for_og_loss: int = 100,
@@ -248,8 +249,19 @@ class FCNGAN(BaseGAN):
             The maximum number of steps to use the original GAN loss, by default 100
         wandb_run : Union[wandb.sdk.wandb_run.Run, None], optional
             The wandb run object to log the training, by default None
+        device : Union[str, None], optional
+            The device to use for training, by default None. If None, the device is set to "cuda" if available else "cpu"
         config : dict, optional
             The configuration dictionary, by default {}. This will be passed to the wandb run object if it is not None and will be saved locally if the model is saved
+        generator_loss_to_use : str, optional
+            The loss function to use for the generator, by default "bce"
+
+                - "og": Original GAN loss, which is `L = log(1 - D(G(z)))`
+                - "bce": Binary Cross Entropy loss which is `L = -log(D(G(z)))`
+                - "og_bce": Original GAN loss for the first `max_step_for_og_loss` steps and then BCE loss after that
+
+        max_step_for_og_loss : int, optional
+            The maximum number of steps to use the original GAN loss, by default 100
         """
         super(FCNGAN, self).__init__(
             generator,
@@ -259,6 +271,7 @@ class FCNGAN(BaseGAN):
             discriminator_optimizer,
             generator_optimizer_kwargs,
             discriminator_optimizer_kwargs,
+            device,
             wandb_run,
             config,
         )

@@ -17,6 +17,7 @@ class WGAN(BaseGAN):
         generator_optimizer_kwargs: dict = {},
         discriminator_optimizer_kwargs: dict = {},
         wandb_run: Union[wandb.sdk.wandb_run.Run, None] = None,
+        device: Union[str, None] = None,
         config: dict = {},
         c: float = 0.01,
         **kwargs,
@@ -36,9 +37,11 @@ class WGAN(BaseGAN):
         discriminator_optimizer : str, optional
             The optimizer to use for the discriminator, by default "adam"
         generator_optimizer_kwargs : dict, optional
-            The keyword arguments to pass to the generator optimizer, by default `{"lr": 0.002}`
+            The keyword arguments to pass to the generator optimizer, by default `{}`
         discriminator_optimizer_kwargs : dict, optional
-            The keyword arguments to pass to the discriminator optimizer, by default `{"lr": 0.002}`
+            The keyword arguments to pass to the discriminator optimizer, by default `{}`
+        device : str, optional
+            The device to use for training, by default None. If None, the device will be set to "cuda" if available, else "cpu"
         wandb_run : Union[wandb.sdk.wandb_run.Run, None], optional
             The wandb run object to log the training, by default None
         config : dict, optional
@@ -54,6 +57,7 @@ class WGAN(BaseGAN):
             discriminator_optimizer,
             generator_optimizer_kwargs,
             discriminator_optimizer_kwargs,
+            device,
             wandb_run,
             config,
         )

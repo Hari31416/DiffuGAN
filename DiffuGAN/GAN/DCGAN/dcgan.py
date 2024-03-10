@@ -428,6 +428,7 @@ class DCGAN(FCNGAN):
         generator_optimizer_kwargs: dict = {"lr": 0.002},
         discriminator_optimizer_kwargs: dict = {"lr": 0.002},
         wandb_run: Union[wandb.sdk.wandb_run.Run, None] = None,
+        device: Union[str, None] = None,
         config: dict = {},
         generator_loss_to_use: str = "bce",
         max_step_for_og_loss: int = 100,
@@ -441,6 +442,7 @@ class DCGAN(FCNGAN):
             generator_optimizer_kwargs,
             discriminator_optimizer_kwargs,
             wandb_run,
+            device,
             config,
             generator_loss_to_use,
             max_step_for_og_loss,
@@ -448,6 +450,7 @@ class DCGAN(FCNGAN):
 
 
 class WDCGAN(WGAN):
+
     def __init__(
         self,
         generator: nn.Module,
@@ -458,6 +461,7 @@ class WDCGAN(WGAN):
         generator_optimizer_kwargs: dict = {},
         discriminator_optimizer_kwargs: dict = {},
         wandb_run: Union[wandb.sdk.wandb_run.Run, None] = None,
+        device: Union[str, None] = None,
         config: dict = {},
         c: float = 0.01,
         **kwargs,
@@ -471,6 +475,7 @@ class WDCGAN(WGAN):
             generator_optimizer_kwargs,
             discriminator_optimizer_kwargs,
             wandb_run,
+            device,
             config,
+            c,
         )
-        self.c = c

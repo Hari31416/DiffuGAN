@@ -167,6 +167,7 @@ class BaseGAN:
         discriminator_optimizer: str = "adam",
         generator_optimizer_kwargs: dict = {"lr": 0.0001},
         discriminator_optimizer_kwargs: dict = {"lr": 0.0001},
+        device: Union[str, None] = None,
         wandb_run: Union[wandb.sdk.wandb_run.Run, None] = None,
         config: dict = {},
     ) -> None:
@@ -185,17 +186,25 @@ class BaseGAN:
         discriminator_optimizer : str, optional
             The optimizer to use for the discriminator, by default "adam"
         generator_optimizer_kwargs : dict, optional
-            The keyword arguments to pass to the generator optimizer, by default `{"lr": 0.002}`
+            The keyword arguments to pass to the generator optimizer, by default `{"lr": 0.0001}`
         discriminator_optimizer_kwargs : dict, optional
-            The keyword arguments to pass to the discriminator optimizer, by default `{"lr": 0.002}`
+            The keyword arguments to pass to the discriminator optimizer, by default `{"lr": 0.0001}`
+        device : Union[str, None], optional
+            The device to use for training, by default None. If None, the device is automatically selected
         wandb_run : Union[wandb.sdk.wandb_run.Run, None], optional
             The wandb run object to log the training, by default None
         config : dict, optional
             The configuration dictionary, by default {}. This will be passed to the wandb run object if it is not None and will be saved locally if the model is saved
         """
         self.logger = create_simple_logger("GAN")
-        self.generator = generator
-        self.discriminator = discriminator
+        self.device = (
+            torch.device(device)
+            if device
+            else torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        )
+        self.logger.info(f"Using device: {self.device}")
+        self.generator = generator.to(self.device)
+        self.discriminator = discriminator.to(self.device)
         self.k = k
         self.bce_loss = nn.BCELoss()
         self.optimizer_G = parse_optimizer(
@@ -214,6 +223,10 @@ class BaseGAN:
             self.use_wandb = False
         self.step_count = 0  # global step count
         self.config = config
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.logger.info(f"Using the device: {self.device}")
+        self.generator = self.generator.to(self.device)
+        self.discriminator = self.discriminator.to(self.device)
 
     def generator_loss(self, real: torch.Tensor, fake: torch.Tensor) -> torch.Tensor:
         """Calculates the generator loss. This is a dummy function and should be overridden in the child classes"""
@@ -381,6 +394,9 @@ class BaseGAN:
         self.discriminator.load_state_dict(checkpoint["discriminator"])
         self.optimizer_G.load_state_dict(checkpoint["optimizer_G"])
         self.optimizer_D.load_state_dict(checkpoint["optimizer_D"])
+        # add models to the device
+        self.generator = self.generator.to(self.device)
+        self.discriminator = self.discriminator.to(self.device)
 
     def after_discriminator_update(self) -> None:
         """A function to be called after updating the discriminator. This can be overridden in the child classes"""
@@ -427,7 +443,7 @@ class BaseGAN:
         """
         losses = {"D": [], "G": []}
         # use the same noise vectors for each epoch for bettr comparison
-        noises = torch.randn(49, self.generator.latent_dimension)
+        noises = torch.randn(49, self.generator.latent_dimension, device=self.device)
         plotter = ImagePlotter(figsize=(14, 14))
         if not image_plot_interval:
             self.logger.info("image_plot_interval is 0. Images will not be plotted")
@@ -439,7 +455,7 @@ class BaseGAN:
         for epoch in range(epochs):
             for batch_idx, (imgs, _) in enumerate(dataset):
                 batch_size = imgs.size(0)
-                real_imgs = imgs
+                real_imgs = imgs.to(self.device)
                 z = torch.randn(batch_size, self.generator.latent_dimension)
                 fake_imgs = self.generator(z)
                 self.optimizer_D.zero_grad()
